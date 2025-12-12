@@ -4,8 +4,8 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <poll.h>
-#include "config.h"
-#include "protocol.h"
+#include "../shared/config.h"
+#include "../shared/protocol.h"
 
 // Struct cho client kết nối
 struct ClientConnection {

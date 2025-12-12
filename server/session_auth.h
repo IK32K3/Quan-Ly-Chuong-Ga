@@ -1,7 +1,7 @@
 #ifndef SESSION_AUTH_H
 #define SESSION_AUTH_H
 
-#include "config.h"
+#include "../shared/config.h"
 
 // Struct cho session
 struct Session {

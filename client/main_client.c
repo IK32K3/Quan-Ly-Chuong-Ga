@@ -1,187 +1,156 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
-#include <time.h>
 
 #include "ui_client.h"
-#include "../server/devices.h"
+#include "net_client.h"
+#include "../shared/protocol.h"
 
-#define MAX_SESSIONS 16
-
-struct SessionEntry {
-    char device_id[MAX_ID_LEN];
-    char token[MAX_TOKEN_LEN];
+struct NetBackend {
+    int fd;
 };
 
-struct DemoBackend {
-    struct DevicesContext devices;
-    struct SessionEntry sessions[MAX_SESSIONS];
-    size_t session_count;
-};
-
-static struct SessionEntry *find_session(struct DemoBackend *b, const char *device_id, const char *token) {
-    if (!b || !device_id || !token) return NULL;
-    for (size_t i = 0; i < b->session_count; ++i) {
-        if (strncmp(b->sessions[i].device_id, device_id, sizeof(b->sessions[i].device_id)) == 0 &&
-            strncmp(b->sessions[i].token, token, sizeof(b->sessions[i].token)) == 0) {
-            return &b->sessions[i];
-        }
+static int parse_response(const char *line, int *code, char *text, size_t text_len, char *payload, size_t payload_len) {
+    (void)payload_len;
+    if (!line || !code || !text || text_len == 0) return -1;
+    payload[0] = '\0';
+    int c = 0;
+    int count = sscanf(line, "%d %63s %[^\n]", &c, text, payload);
+    if (count < 2) {
+        return -1;
     }
-    return NULL;
-}
-
-static struct SessionEntry *create_session(struct DemoBackend *b, const char *device_id, const char *token) {
-    if (!b || !device_id || !token) return NULL;
-    if (b->session_count >= MAX_SESSIONS) return NULL;
-    struct SessionEntry *s = &b->sessions[b->session_count++];
-    memset(s, 0, sizeof(*s));
-    strncpy(s->device_id, device_id, sizeof(s->device_id) - 1);
-    strncpy(s->token, token, sizeof(s->token) - 1);
-    return s;
-}
-
-static void random_token(char *out, size_t len) {
-    static const char alphabet[] = "0123456789abcdef";
-    for (size_t i = 0; i + 1 < len; ++i) {
-        out[i] = alphabet[rand() % (sizeof(alphabet) - 1)];
-    }
-    out[len - 1] = '\0';
+    *code = c;
+    return 0;
 }
 
 static int backend_scan(void *user_data, struct DeviceIdentity *out, size_t max_out, size_t *found) {
-    struct DemoBackend *b = (struct DemoBackend *)user_data;
-    *found = devices_scan(&b->devices, out, max_out);
+    struct NetBackend *b = (struct NetBackend *)user_data;
+    *found = 0;
+    if (client_send_line(b->fd, "SCAN") != 0) return -1;
+
+    char buf[MAX_LINE_LEN];
+    while (1) {
+        int r = client_recv_line_timeout(b->fd, buf, sizeof(buf), 200);
+        if (r == 1) { /* het du lieu */
+            break;
+        } else if (r < 0) {
+            return -1;
+        }
+        int code = 0;
+        char text[64], payload[MAX_LINE_LEN] = {0};
+        if (parse_response(buf, &code, text, sizeof(text), payload, sizeof(payload)) != 0) {
+            continue;
+        }
+        if (code == RESP_DEVICE) {
+            char id[MAX_ID_LEN], type_str[MAX_TYPE_LEN];
+            if (sscanf(payload, "DEVICE %31s %15s", id, type_str) == 2) {
+                if (*found < max_out) {
+                    strncpy(out[*found].id, id, sizeof(out[*found].id) - 1);
+                    out[*found].id[sizeof(out[*found].id) - 1] = '\0';
+                    out[*found].type = device_type_from_string(type_str);
+                    (*found)++;
+                }
+            }
+        } else if (code == RESP_NO_DEVICE_SCAN) {
+            *found = 0;
+            break;
+        } else {
+            /* response khac => ket thuc vong */
+            break;
+        }
+    }
     return 0;
 }
 
 static int backend_connect(void *user_data, const char *device_id, const char *password, char *out_token, size_t token_len, enum DeviceType *out_type) {
-    struct DemoBackend *b = (struct DemoBackend *)user_data;
-    struct Device *dev = devices_find(&b->devices, device_id);
-    if (!dev) {
-        return -1;
-    }
-    if (strncmp(dev->password, password, sizeof(dev->password)) != 0) {
-        return -2;
-    }
-    random_token(out_token, token_len);
-    create_session(b, device_id, out_token);
-    if (out_type) {
-        *out_type = dev->identity.type;
-    }
+    struct NetBackend *b = (struct NetBackend *)user_data;
+    char line[MAX_LINE_LEN];
+    snprintf(line, sizeof(line), "CONNECT %s APP1 %s", device_id, password);
+    if (client_send_line(b->fd, line) != 0) return -1;
+    if (client_recv_line(b->fd, line, sizeof(line)) != 0) return -1;
+    int code = 0; char text[64]; char payload[MAX_LINE_LEN] = {0};
+    if (parse_response(line, &code, text, sizeof(text), payload, sizeof(payload)) != 0) return -1;
+    if (code != RESP_CONNECT_OK) return -1;
+    strncpy(out_token, payload, token_len - 1);
+    out_token[token_len - 1] = '\0';
+    if (out_type) *out_type = DEVICE_UNKNOWN; /* type se lay tu scan */
     return 0;
 }
 
-static int backend_require_token(struct DemoBackend *b, const char *device_id, const char *token) {
-    return find_session(b, device_id, token) ? 0 : -1;
-}
-
 static int backend_info(void *user_data, const char *device_id, const char *token, char *out_json, size_t json_len) {
-    struct DemoBackend *b = (struct DemoBackend *)user_data;
-    if (backend_require_token(b, device_id, token) != 0) {
-        return -1;
-    }
-    const struct Device *dev = devices_find_const(&b->devices, device_id);
-    if (!dev) {
-        return -2;
-    }
-    return devices_info_json(dev, out_json, json_len);
+    struct NetBackend *b = (struct NetBackend *)user_data;
+    char line[MAX_LINE_LEN];
+    snprintf(line, sizeof(line), "INFO %s %s", device_id, token);
+    if (client_send_line(b->fd, line) != 0) return -1;
+    if (client_recv_line(b->fd, line, sizeof(line)) != 0) return -1;
+    int code = 0; char text[64]; char payload[MAX_JSON_LEN] = {0};
+    if (parse_response(line, &code, text, sizeof(text), payload, sizeof(payload)) != 0) return -1;
+    if (code != RESP_INFO_OK) return -1;
+    strncpy(out_json, payload, json_len - 1);
+    out_json[json_len - 1] = '\0';
+    return 0;
 }
 
 static int backend_control(void *user_data, const char *device_id, const char *token, const char *action, const char *payload) {
-    struct DemoBackend *b = (struct DemoBackend *)user_data;
-    if (backend_require_token(b, device_id, token) != 0) {
-        return -1;
+    struct NetBackend *b = (struct NetBackend *)user_data;
+    char line[MAX_LINE_LEN];
+    if (payload && payload[0]) {
+        snprintf(line, sizeof(line), "CONTROL %s %s %s %s", device_id, token, action, payload);
+    } else {
+        snprintf(line, sizeof(line), "CONTROL %s %s %s", device_id, token, action);
     }
-    struct Device *dev = devices_find(&b->devices, device_id);
-    if (!dev || !action) {
-        return -2;
-    }
-    if (strcmp(action, "ON") == 0) {
-        return devices_set_state(dev, DEVICE_ON);
-    } else if (strcmp(action, "OFF") == 0) {
-        return devices_set_state(dev, DEVICE_OFF);
-    } else if (strcmp(action, "FEED_NOW") == 0 && dev->identity.type == DEVICE_FEEDER) {
-        double food = dev->data.feeder.W;
-        double water = dev->data.feeder.Vw;
-        if (payload) {
-            /* very small parser for {"food":X,"water":Y} */
-            double f = 0.0, w = 0.0;
-            if (sscanf(payload, "{\"food\":%lf,\"water\":%lf}", &f, &w) == 2) {
-                food = f;
-                water = w;
-            }
-        }
-        return devices_feed_now(dev, food, water);
-    } else if (strcmp(action, "DRINK_NOW") == 0 && dev->identity.type == DEVICE_DRINKER) {
-        double water = dev->data.drinker.Vw;
-        if (payload) {
-            /* parser nho cho {"water":X} */
-            double w = 0.0;
-            if (sscanf(payload, "{\"water\":%lf}", &w) == 1) {
-                water = w;
-            }
-        }
-        return devices_drink_now(dev, water);
-    } else if (strcmp(action, "SPRAY_NOW") == 0 && dev->identity.type == DEVICE_SPRAYER) {
-        double Vh = dev->data.sprayer.Vh;
-        if (payload) {
-            /* parser nho cho {"Vh":X} */
-            double v = 0.0;
-            if (sscanf(payload, "{\"Vh\":%lf}", &v) == 1) {
-                Vh = v;
-            }
-        }
-        return devices_spray_now(dev, Vh);
-    }
-    return -3;
+    if (client_send_line(b->fd, line) != 0) return -1;
+    if (client_recv_line(b->fd, line, sizeof(line)) != 0) return -1;
+    int code = 0; char text[64]; char resp_payload[64] = {0};
+    if (parse_response(line, &code, text, sizeof(text), resp_payload, sizeof(resp_payload)) != 0) return -1;
+    return code == RESP_CONTROL_OK ? 0 : -1;
 }
 
 static int backend_setcfg(void *user_data, const char *device_id, const char *token, const char *json_payload) {
-    struct DemoBackend *b = (struct DemoBackend *)user_data;
-    if (backend_require_token(b, device_id, token) != 0) {
-        return -1;
-    }
-    struct Device *dev = devices_find(&b->devices, device_id);
-    if (!dev || !json_payload) {
-        return -2;
-    }
-    switch (dev->identity.type) {
-    case DEVICE_FAN: {
-        double Tmax = dev->data.fan.Tmax, Tp1 = dev->data.fan.Tp1;
-        sscanf(json_payload, "{\"Tmax\":%lf,\"Tp1\":%lf}", &Tmax, &Tp1);
-        return devices_set_config_fan(dev, Tmax, Tp1);
-    }
-    case DEVICE_HEATER: {
-        double Tmin = dev->data.heater.Tmin, Tp2 = dev->data.heater.Tp2;
-        sscanf(json_payload, "{\"Tmin\":%lf,\"Tp2\":%lf}", &Tmin, &Tp2);
-        return devices_set_config_heater(dev, Tmin, Tp2, dev->data.heater.mode);
-    }
-    case DEVICE_SPRAYER: {
-        double Hmin = dev->data.sprayer.Hmin, Hp = dev->data.sprayer.Hp, Vh = dev->data.sprayer.Vh;
-        sscanf(json_payload, "{\"Hmin\":%lf,\"Hp\":%lf,\"Vh\":%lf}", &Hmin, &Hp, &Vh);
-        return devices_set_config_sprayer(dev, Hmin, Hp, Vh);
-    }
-    case DEVICE_FEEDER: {
-        double W = dev->data.feeder.W, Vw = dev->data.feeder.Vw;
-        sscanf(json_payload, "{\"W\":%lf,\"Vw\":%lf}", &W, &Vw);
-        return devices_set_config_feeder(dev, W, Vw, dev->data.feeder.schedule, dev->data.feeder.schedule_count);
-    }
-    case DEVICE_DRINKER: {
-        double Vw = dev->data.drinker.Vw;
-        sscanf(json_payload, "{\"Vw\":%lf}", &Vw);
-        return devices_set_config_drinker(dev, Vw, dev->data.drinker.schedule, dev->data.drinker.schedule_count);
-    }
-    default:
-        return -3;
+    struct NetBackend *b = (struct NetBackend *)user_data;
+    char line[MAX_LINE_LEN];
+    snprintf(line, sizeof(line), "SETCFG %s %s %s", device_id, token, json_payload);
+    if (client_send_line(b->fd, line) != 0) return -1;
+    if (client_recv_line(b->fd, line, sizeof(line)) != 0) return -1;
+    int code = 0; char text[64]; char resp_payload[MAX_JSON_LEN] = {0};
+    if (parse_response(line, &code, text, sizeof(text), resp_payload, sizeof(resp_payload)) != 0) return -1;
+    return code == RESP_SETCFG_OK ? 0 : -1;
+}
+
+static void read_input_line(const char *prompt, char *out, size_t out_len, const char *default_val) {
+    printf("%s", prompt);
+    if (fgets(out, (int)out_len, stdin)) {
+        size_t l = strlen(out);
+        if (l > 0 && out[l - 1] == '\n') out[l - 1] = '\0';
+        if (out[0] == '\0' && default_val) {
+            strncpy(out, default_val, out_len - 1);
+            out[out_len - 1] = '\0';
+        }
+    } else if (default_val) {
+        strncpy(out, default_val, out_len - 1);
+        out[out_len - 1] = '\0';
     }
 }
 
 int main(void) {
-    struct DemoBackend backend;
-    devices_context_init(&backend.devices);
-    backend.session_count = 0;
-    srand((unsigned int)time(NULL));
+    char host[64];
+    char port_str[16];
+    read_input_line("Nhap IP server (mac dinh 127.0.0.1): ", host, sizeof(host), "127.0.0.1");
+    read_input_line("Nhap cong (mac dinh 8888): ", port_str, sizeof(port_str), "8888");
+    int port = atoi(port_str);
+    if (port <= 0) port = 8888;
 
+    int fd = client_connect(host, port);
+    if (fd < 0) {
+        printf("Khong ket noi duoc server.\n");
+        return 1;
+    }
+
+    /* Doc READY neu co */
+    char ready[MAX_LINE_LEN];
+    client_recv_line_timeout(fd, ready, sizeof(ready), 500);
+
+    struct NetBackend backend = { .fd = fd };
     struct UiBackendOps ops = {
         .user_data = &backend,
         .scan = backend_scan,
@@ -194,5 +163,7 @@ int main(void) {
     struct UiContext ui;
     ui_context_init(&ui, &ops);
     ui_run(&ui);
+
+    client_disconnect(fd);
     return 0;
 }

@@ -399,3 +399,56 @@ int devices_info_json(const struct Device *dev, char *out_json, size_t out_len) 
     }
     return 0;
 }
+
+static void init_default_device(struct Device *dev, enum DeviceType type, const char *id, const char *password) {
+    switch (type) {
+    case DEVICE_SENSOR:
+        init_sensor(dev, id);
+        break;
+    case DEVICE_EGG_COUNTER:
+        init_egg_counter(dev, id);
+        break;
+    case DEVICE_FAN:
+        init_fan(dev, id);
+        break;
+    case DEVICE_HEATER:
+        init_heater(dev, id);
+        break;
+    case DEVICE_SPRAYER:
+        init_sprayer(dev, id);
+        break;
+    case DEVICE_FEEDER:
+        init_feeder(dev, id);
+        break;
+    case DEVICE_DRINKER:
+        init_drinker(dev, id);
+        break;
+    default:
+        memset(dev, 0, sizeof(*dev));
+        strncpy(dev->identity.id, id, sizeof(dev->identity.id) - 1);
+        dev->identity.type = DEVICE_UNKNOWN;
+        strncpy(dev->password, "123456", sizeof(dev->password) - 1);
+        return;
+    }
+    if (password && password[0] != '\0') {
+        strncpy(dev->password, password, sizeof(dev->password) - 1);
+        dev->password[sizeof(dev->password) - 1] = '\0';
+    }
+}
+
+int devices_add(struct DevicesContext *ctx, const char *id, enum DeviceType type, const char *password) {
+    if (!ctx || !id || id[0] == '\0') {
+        return -1;
+    }
+    if (ctx->count >= MAX_DEVICES) {
+        return -2;
+    }
+    if (devices_find(ctx, id) != NULL) {
+        return -3; /* da ton tai */
+    }
+    struct Device *dev = &ctx->devices[ctx->count];
+    memset(dev, 0, sizeof(*dev));
+    init_default_device(dev, type, id, password ? password : "123456");
+    ctx->count++;
+    return 0;
+}

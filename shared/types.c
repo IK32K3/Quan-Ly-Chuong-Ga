@@ -70,3 +70,22 @@ const char *device_type_get_default_name(enum DeviceType type) {
     default: return NULL;
     }
 }
+
+const char *device_status_to_string(enum DeviceStatus status) {
+    switch (status) {
+    case STATUS_OFF: return "OFF";
+    case STATUS_ON: return "ON";
+    case STATUS_AUTO: return "AUTO";
+    case STATUS_ERROR: return "ERROR";
+    default: return "UNKNOWN";
+    }
+}
+
+enum DeviceStatus device_status_from_string(const char *status_str) {
+    if (!status_str) return STATUS_ERROR;
+    if (strcasecmp(status_str, "OFF") == 0) return STATUS_OFF;
+    if (strcasecmp(status_str, "ON") == 0) return STATUS_ON;
+    if (strcasecmp(status_str, "AUTO") == 0) return STATUS_AUTO;
+    if (strcasecmp(status_str, "ERROR") == 0) return STATUS_ERROR;
+    return STATUS_ERROR;
+}

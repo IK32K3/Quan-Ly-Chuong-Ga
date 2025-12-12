@@ -5,7 +5,6 @@
 #include "../shared/types.h"
 #include "../shared/config.h"
 
-#define MAX_COOPS 8
 #define MAX_COOP_NAME 64
 
 struct CoopDevice {

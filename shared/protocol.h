@@ -11,6 +11,7 @@ enum CommandType {
     CMD_SETCFG,
     CMD_CHPASS,
     CMD_BYE,
+    CMD_ADD_DEVICE,
     CMD_UNKNOWN
 };
 
@@ -25,6 +26,7 @@ enum ResponseCode {
     RESP_SETCFG_OK = 150,
     RESP_PASS_OK = 160,
     RESP_BYE_OK = 170,
+    RESP_ADD_OK = 180,
     
     // Client errors (2xx-3xx)
     RESP_WRONG_PASSWORD = 221,
@@ -60,6 +62,7 @@ int protocol_format_control_ok(char *out, size_t len);
 int protocol_format_setcfg_ok(char *out, size_t len, const char *json);
 int protocol_format_pass_ok(char *out, size_t len);
 int protocol_format_bye_ok(char *out, size_t len);
+int protocol_format_add_ok(char *out, size_t len);
 int protocol_format_not_connected(char *out, size_t len);
 int protocol_format_bad_request(char *out, size_t len);
 

@@ -1,12 +1,11 @@
 CC ?= gcc
 CFLAGS ?= -Wall -Wextra -std=c99
-INCLUDES = -I. -I.. -I../shared -I../server
+INCLUDES = -I. -I.. -I../shared
 
-SRCS = main_client.c ui_client.c coop_client.c \
-	../server/devices.c \
-	../shared/types.c
+SRCS = main_client.c ui_client.c coop_client.c net_client.c \
+	../shared/types.c ../shared/protocol.c
 
-BIN = demo_client
+BIN = client_app
 
 all: $(BIN)
 

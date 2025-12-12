@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+#include <poll.h>
 
 int client_connect(const char *host, int port) {
     int fd = socket(AF_INET, SOCK_STREAM, 0);
@@ -39,6 +40,18 @@ int client_recv_line(int fd, char *buffer, size_t len) {
     char *end = strchr(buffer, '\n');
     if (end) *end = '\0';
     return 0;
+}
+
+int client_recv_line_timeout(int fd, char *buffer, size_t len, int timeout_ms) {
+    struct pollfd pfd = { .fd = fd, .events = POLLIN };
+    int ret = poll(&pfd, 1, timeout_ms);
+    if (ret == 0) {
+        return 1; /* timeout */
+    }
+    if (ret < 0 || !(pfd.revents & POLLIN)) {
+        return -1;
+    }
+    return client_recv_line(fd, buffer, len);
 }
 
 void client_disconnect(int fd) {

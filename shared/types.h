@@ -1,6 +1,7 @@
 #ifndef SHARED_TYPES_H
 #define SHARED_TYPES_H
 #include <stddef.h>
+#include <time.h>
 #include "config.h"
 
 enum DeviceType {

@@ -1,75 +1,136 @@
 #include "protocol.h"
-#include "types.h"
-#include "config.h"
+
 #include <stdio.h>
 #include <string.h>
 #include <strings.h>
 #include <stddef.h>  
 #include <stdlib.h>  
 
-// Hàm parse response - THÊM MỚI
-int protocol_parse_response(const char *line, int *code_out, char *text_out,
-                           size_t text_len, char *payload_out, size_t payload_len) {
-    if (!line || !code_out) return -1;
-    
-    // Parse code
-    char *endptr;
-    long code = strtol(line, &endptr, 10);
-    if (endptr == line || code < 100) return -1;
-    
-    *code_out = (int)code;
-    
-    // Skip whitespace
-    while (*endptr == ' ') endptr++;
-    
-    // Parse text
-    const char *text_start = endptr;
-    const char *text_end = strchr(text_start, ' ');
-    
-    if (text_out && text_len > 0) {
-        if (text_end) {
-            size_t copy_len = (size_t)(text_end - text_start);
-            if (copy_len >= text_len) copy_len = text_len - 1;
-            strncpy(text_out, text_start, copy_len);
-            text_out[copy_len] = '\0';
-        } else {
-            strncpy(text_out, text_start, text_len - 1);
-            text_out[text_len - 1] = '\0';
+
+struct command_entry {
+    const char *name;
+    enum CommandType cmd;
+};
+
+static const struct command_entry COMMAND_TABLE[] = {
+    { "SCAN", CMD_SCAN },
+    { "CONNECT", CMD_CONNECT },
+    { "INFO", CMD_INFO },
+    { "CONTROL", CMD_CONTROL },
+    { "SETCFG", CMD_SETCFG },
+    { "CHPASS", CMD_CHPASS },
+    { "BYE", CMD_BYE },
+    { "ADD", CMD_ADD_DEVICE },
+    { "ADDDEVICE", CMD_ADD_DEVICE }
+};
+
+enum CommandType protocol_command_from_string(const char *word) {
+    if (!word) {
+        return CMD_UNKNOWN;
+    }
+
+    for (size_t i = 0; i < sizeof(COMMAND_TABLE) / sizeof(COMMAND_TABLE[0]); ++i) {
+        if (strcasecmp(word, COMMAND_TABLE[i].name) == 0) {
+            return COMMAND_TABLE[i].cmd;
         }
     }
-    
-    // Parse payload (nếu có)
-    if (text_end && payload_out && payload_len > 0) {
-        const char *payload_start = text_end + 1;
-        if (*payload_start) {
-            strncpy(payload_out, payload_start, payload_len - 1);
-            payload_out[payload_len - 1] = '\0';
-        } else {
-            payload_out[0] = '\0';
-        }
+
+    return CMD_UNKNOWN;
+}
+
+const char *protocol_command_to_string(enum CommandType cmd) {
+    switch (cmd) {
+    case CMD_SCAN: return "SCAN";
+    case CMD_CONNECT: return "CONNECT";
+    case CMD_INFO: return "INFO";
+    case CMD_CONTROL: return "CONTROL";
+    case CMD_SETCFG: return "SETCFG";
+    case CMD_CHPASS: return "CHPASS";
+    case CMD_BYE: return "BYE";
+    case CMD_ADD_DEVICE: return "ADD";
+    default: return "UNKNOWN";
     }
-    
+}
+
+int protocol_format_line(char *out, size_t len, int code, const char *text, const char *payload) {
+    if (!out || len == 0 || !text) {
+        return -1;
+    }
+
+    int written;
+    if (payload && payload[0] != '\0') {
+        written = snprintf(out, len, "%d %s %s", code, text, payload);
+    } else {
+        written = snprintf(out, len, "%d %s", code, text);
+    }
+
+    if (written < 0 || (size_t)written >= len) {
+        return -1;
+    }
+
     return 0;
 }
 
-// Sửa hàm format_device
+int protocol_format_ready(char *out, size_t len) {
+    return protocol_format_line(out, len, RESP_READY, "SERVER_READY", NULL);
+}
+
 int protocol_format_device(char *out, size_t len, const char *id, enum DeviceType type) {
-    if (!id || len == 0) return -1;
-    
-    int written = snprintf(out, len, "%d DEVICE %s %s", 
-                          RESP_DEVICE, id, device_type_to_string(type));
-    return (written < 0 || (size_t)written >= len) ? -1 : 0;
+    if (!id) {
+        return -1;
+    }
+    char payload[MAX_LINE_LEN];
+    int written = snprintf(payload, sizeof(payload), "DEVICE %s %s", id, device_type_to_string(type));
+    if (written < 0 || (size_t)written >= sizeof(payload)) {
+        return -1;
+    }
+    return protocol_format_line(out, len, RESP_DEVICE, payload, NULL);
 }
 
-// Thêm hàm format mới
-int protocol_format_already_connected(char *out, size_t len) {
-    return protocol_format_line(out, len, 332, "ALREADY_CONNECTED", NULL);
+int protocol_format_no_device_scan(char *out, size_t len) {
+    return protocol_format_line(out, len, RESP_NO_DEVICE_SCAN, "NO_DEVICE", NULL);
 }
 
-int protocol_format_invalid_param(char *out, size_t len) {
-    return protocol_format_line(out, len, 401, "INVALID_PARAM", NULL);
+int protocol_format_connect_ok(char *out, size_t len, const char *token) {
+    return protocol_format_line(out, len, RESP_CONNECT_OK, "CONNECT_OK", token);
 }
 
-int protocol_format_internal_error(char *out, size_t len) {
-    return protocol_format_line(out, len, 500, "INTERNAL_ERROR", NULL);
+int protocol_format_wrong_password(char *out, size_t len) {
+    return protocol_format_line(out, len, RESP_WRONG_PASSWORD, "WRONG_PASSWORD", NULL);
+}
+
+int protocol_format_no_device_err(char *out, size_t len) {
+    return protocol_format_line(out, len, RESP_NO_DEVICE, "NO_DEVICE", NULL);
+}
+
+int protocol_format_info_ok(char *out, size_t len, const char *json) {
+    return protocol_format_line(out, len, RESP_INFO_OK, "INFO_OK", json);
+}
+
+int protocol_format_control_ok(char *out, size_t len) {
+    return protocol_format_line(out, len, RESP_CONTROL_OK, "CONTROL_OK", NULL);
+}
+
+int protocol_format_setcfg_ok(char *out, size_t len, const char *json) {
+    return protocol_format_line(out, len, RESP_SETCFG_OK, "SETCFG_OK", json);
+}
+
+int protocol_format_pass_ok(char *out, size_t len) {
+    return protocol_format_line(out, len, RESP_PASS_OK, "PASS_OK", NULL);
+}
+
+int protocol_format_bye_ok(char *out, size_t len) {
+    return protocol_format_line(out, len, RESP_BYE_OK, "BYE_OK", NULL);
+}
+
+int protocol_format_add_ok(char *out, size_t len) {
+    return protocol_format_line(out, len, RESP_ADD_OK, "ADD_OK", NULL);
+}
+
+int protocol_format_not_connected(char *out, size_t len) {
+    return protocol_format_line(out, len, RESP_NOT_CONNECTED, "NOT_CONNECTED", NULL);
+}
+
+int protocol_format_bad_request(char *out, size_t len) {
+    return protocol_format_line(out, len, RESP_BAD_REQUEST, "BAD_REQUEST", NULL);
 }
