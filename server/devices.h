@@ -6,7 +6,7 @@
 #include "../shared/config.h"
 #include "../shared/types.h"
 
-#define MAX_SCHEDULE_ENTRIES 8
+#define MAX_SCHEDULE_ENTRIES 10
 
 enum DevicePowerState {
     DEVICE_OFF = 0,

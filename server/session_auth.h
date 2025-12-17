@@ -1,5 +1,6 @@
 #ifndef SESSION_AUTH_H
 #define SESSION_AUTH_H
+#include <stddef.h>
 
 #include "../shared/config.h"
 
