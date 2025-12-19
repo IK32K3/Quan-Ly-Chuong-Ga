@@ -135,120 +135,6 @@ static void json_escape(const char *in, char *out, size_t out_len) {
     out[pos] = '\0';
 }
 
-/** @see storage_save_devices() */
-int storage_save_devices(const struct DevicesContext *ctx, const char *path) {
-    if (!ctx || !path) return -1;
-    FILE *f = fopen(path, "w");
-    if (!f) return -1;
-    fprintf(f, "[\n");
-    for (size_t i = 0; i < ctx->count; ++i) {
-        char info[MAX_JSON_LEN];
-        devices_info_json(&ctx->devices[i], info, sizeof(info));
-        fprintf(f, "  {\"password\":\"%s\",\"coop_id\":%d,\"info\":%s}%s\n",
-                ctx->devices[i].password,
-                ctx->devices[i].identity.coop_id,
-                info,
-                (i + 1 == ctx->count) ? "" : ",");
-    }
-    fprintf(f, "]\n");
-    fclose(f);
-    return 0;
-}
-
-/** @see storage_load_devices() */
-int storage_load_devices(struct DevicesContext *ctx, const char *path) {
-    if (!ctx || !path) return -1;
-    FILE *f = fopen(path, "r");
-    if (!f) {
-        return -1;
-    }
-    char *buffer = NULL;
-    long len = 0;
-    fseek(f, 0, SEEK_END);
-    len = ftell(f);
-    fseek(f, 0, SEEK_SET);
-    buffer = (char *)malloc((size_t)len + 1);
-    if (!buffer) {
-        fclose(f);
-        return -1;
-    }
-    fread(buffer, 1, (size_t)len, f);
-    buffer[len] = '\0';
-    fclose(f);
-
-    memset(ctx, 0, sizeof(*ctx));
-
-    /* Parse array of objects. Supports:
-       - full form: {"password":"...","coop_id":0,"info":{...}}
-       - short form: {"id":"FAN_OUT1","type":"fan","password":"...","coop_id":0} (info optional) */
-    const char *p = buffer;
-    while (*p == ' ' || *p == '\n' || *p == '\r' || *p == '\t') p++;
-    if (*p != '[') {
-        free(buffer);
-        return -1;
-    }
-    const char *cur = p;
-    while ((cur = strchr(cur, '{')) && ctx->count < MAX_DEVICES) {
-        const char *end = find_matching_brace(cur);
-        if (!end) break;
-        size_t seg_len = (size_t)(end - cur);
-        char *obj = (char *)malloc(seg_len + 1);
-        if (!obj) break;
-        memcpy(obj, cur, seg_len);
-        obj[seg_len] = '\0';
-
-        char password[MAX_PASSWORD_LEN] = "123456";
-        (void)json_get_string(obj, "password", password, sizeof(password));
-        int coop_id = 0;
-        (void)json_get_int(obj, "coop_id", &coop_id);
-
-        struct Device *dev = &ctx->devices[ctx->count];
-        memset(dev, 0, sizeof(*dev));
-
-        const char *info_start = strstr(obj, "\"info\"");
-        if (info_start) {
-            const char *brace = strchr(info_start, '{');
-            const char *info_end = brace ? find_matching_brace(brace) : NULL;
-            if (brace && info_end) {
-                size_t info_len = (size_t)(info_end - brace);
-                char *info_json = (char *)malloc(info_len + 1);
-                if (info_json) {
-                    memcpy(info_json, brace, info_len);
-                    info_json[info_len] = '\0';
-                    parse_device_info(dev, info_json);
-                    free(info_json);
-                }
-            }
-            strncpy(dev->password, password, sizeof(dev->password) - 1);
-            dev->password[sizeof(dev->password) - 1] = '\0';
-            dev->identity.coop_id = coop_id;
-            if (dev->identity.id[0] != '\0' && dev->identity.type != DEVICE_UNKNOWN) {
-                ctx->count++;
-            }
-        } else {
-            char id[MAX_ID_LEN] = {0};
-            char type_str[32] = {0};
-            if (json_get_string(obj, "device_id", id, sizeof(id)) != 0) {
-                (void)json_get_string(obj, "id", id, sizeof(id));
-            }
-            if (json_get_string(obj, "type", type_str, sizeof(type_str)) == 0 && id[0] != '\0') {
-                enum DeviceType type = device_type_from_string(type_str);
-                if (type != DEVICE_UNKNOWN) {
-                    devices_init_default_device(dev, type, id, password);
-                    dev->identity.coop_id = coop_id;
-                    ctx->count++;
-                }
-            }
-        }
-
-        free(obj);
-        cur = end;
-        if (*cur == ']' || *cur == '\0') break;
-    }
-    free(buffer);
-    return ctx->count > 0 ? 0 : -1;
-}
-
 /** @see storage_save_farm() */
 int storage_save_farm(const struct CoopsContext *coops, const struct DevicesContext *devices, const char *path) {
     if (!coops || !devices || !path) return -1;
@@ -314,33 +200,13 @@ int storage_load_farm(struct CoopsContext *coops, struct DevicesContext *devices
     coops_init(coops);
     memset(devices, 0, sizeof(*devices));
 
-    /* Backward compatible: file cu la array devices [...] */
     const char *p = buffer;
     while (*p == ' ' || *p == '\n' || *p == '\r' || *p == '\t') p++;
+    /* Chỉ chấp nhận format farm mới: object với key "coops"[] */
     if (*p == '[') {
-        int rc = storage_load_devices(devices, path);
-        if (rc == 0) {
-            /* tao danh sach chuong tu coop_id */
-            for (size_t i = 0; i < devices->count; ++i) {
-                int cid = devices->devices[i].identity.coop_id <= 0 ? 1 : devices->devices[i].identity.coop_id;
-                devices->devices[i].identity.coop_id = cid;
-                if (!coops_find(coops, cid)) {
-                    char name[MAX_COOP_NAME];
-                    snprintf(name, sizeof(name), "Chuong %d", cid);
-                    (void)coops_upsert(coops, cid, name);
-                }
-            }
-            if (coops->count == 0) {
-                coops_init_default(coops);
-            }
-            free(buffer);
-            return 0;
-        }
         free(buffer);
         return -1;
     }
-
-    /* New format: object with coops[] each contains devices[] */
     const char *coops_key = strstr(buffer, "\"coops\"");
     if (!coops_key) {
         free(buffer);
@@ -403,7 +269,7 @@ int storage_load_farm(struct CoopsContext *coops, struct DevicesContext *devices
     if (coops->count == 0) {
         coops_init_default(coops);
     }
-    /* Ensure coop_id hop le */
+
     for (size_t i = 0; i < devices->count; ++i) {
         if (devices->devices[i].identity.coop_id <= 0) {
             devices->devices[i].identity.coop_id = 1;

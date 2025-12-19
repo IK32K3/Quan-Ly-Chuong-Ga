@@ -3,7 +3,6 @@
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <poll.h>
 
 // Giả định handle_command từ B trả về char* (response) hoặc NULL
 extern char* handle_command(int fd, enum CommandType cmd, char *args);

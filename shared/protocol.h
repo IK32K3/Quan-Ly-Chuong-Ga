@@ -1,6 +1,7 @@
 #ifndef SHARED_PROTOCOL_H
 #define SHARED_PROTOCOL_H
 
+#include <stddef.h>
 #include "types.h"
 
 /** @brief Các command client có thể gửi lên server. */
@@ -52,9 +53,6 @@ enum ResponseCode {
  */
 enum CommandType protocol_command_from_string(const char *word);
 
-/** @brief Chuyển `CommandType` sang chuỗi chuẩn dùng để debug/log. */
-const char *protocol_command_to_string(enum CommandType cmd);
-
 /**
  * @brief Format một dòng response theo mẫu: "<code> <text> [payload]".
  * @return 0 nếu format thành công, -1 nếu lỗi/buffer không đủ.
@@ -63,9 +61,6 @@ int protocol_format_line(char *out, size_t len, int code, const char *text, cons
 
 /** @brief Response chào ban đầu khi client vừa kết nối. */
 int protocol_format_ready(char *out, size_t len);
-
-/** @brief Response cho một thiết bị (không kèm coop_id). */
-int protocol_format_device(char *out, size_t len, const char *id, enum DeviceType type);
 
 /** @brief Response cho một thiết bị (kèm coop_id). */
 int protocol_format_device_ex(char *out, size_t len, const char *id, enum DeviceType type, int coop_id);

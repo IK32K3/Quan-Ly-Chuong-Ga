@@ -1,11 +1,10 @@
 #include "types.h"
 #include <strings.h>
-#include <stddef.h>  // THÊM
-#include <string.h>  // THÊM cho strcmp nếu cần
+#include <stddef.h>
 
 /**
  * @file types.c
- * @brief Hàm chuyển đổi/kiểm tra type và status dùng chung cho client/server.
+ * @brief Hàm chuyển đổi/kiểm tra type dùng chung cho client/server.
  */
 
 struct type_entry {
@@ -56,25 +55,4 @@ enum DeviceType device_type_from_string(const char *type_str) {
     }
 
     return DEVICE_UNKNOWN;
-}
-
-/** @see device_status_to_string() */
-const char *device_status_to_string(enum DeviceStatus status) {
-    switch (status) {
-    case STATUS_OFF: return "OFF";
-    case STATUS_ON: return "ON";
-    case STATUS_AUTO: return "AUTO";
-    case STATUS_ERROR: return "ERROR";
-    default: return "UNKNOWN";
-    }
-}
-
-/** @see device_status_from_string() */
-enum DeviceStatus device_status_from_string(const char *status_str) {
-    if (!status_str) return STATUS_ERROR;
-    if (strcasecmp(status_str, "OFF") == 0) return STATUS_OFF;
-    if (strcasecmp(status_str, "ON") == 0) return STATUS_ON;
-    if (strcasecmp(status_str, "AUTO") == 0) return STATUS_AUTO;
-    if (strcasecmp(status_str, "ERROR") == 0) return STATUS_ERROR;
-    return STATUS_ERROR;
 }

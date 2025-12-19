@@ -48,24 +48,6 @@ enum CommandType protocol_command_from_string(const char *word) {
     return CMD_UNKNOWN;
 }
 
-/** @see protocol_command_to_string() */
-const char *protocol_command_to_string(enum CommandType cmd) {
-    switch (cmd) {
-    case CMD_SCAN: return "SCAN";
-    case CMD_CONNECT: return "CONNECT";
-    case CMD_INFO: return "INFO";
-    case CMD_CONTROL: return "CONTROL";
-    case CMD_SETCFG: return "SETCFG";
-    case CMD_CHPASS: return "CHPASS";
-    case CMD_BYE: return "BYE";
-    case CMD_ADD_DEVICE: return "ADD";
-    case CMD_ASSIGN_DEVICE: return "ASSIGN";
-    case CMD_COOP_LIST: return "COOPLIST";
-    case CMD_COOP_ADD: return "COOPADD";
-    default: return "UNKNOWN";
-    }
-}
-
 /** @see protocol_format_line() */
 int protocol_format_line(char *out, size_t len, int code, const char *text, const char *payload) {
     if (!out || len == 0 || !text) {
@@ -89,19 +71,6 @@ int protocol_format_line(char *out, size_t len, int code, const char *text, cons
 /** @see protocol_format_ready() */
 int protocol_format_ready(char *out, size_t len) {
     return protocol_format_line(out, len, RESP_READY, "SERVER_READY", NULL);
-}
-
-/** @see protocol_format_device() */
-int protocol_format_device(char *out, size_t len, const char *id, enum DeviceType type) {
-    if (!id) {
-        return -1;
-    }
-    char payload[MAX_LINE_LEN];
-    int written = snprintf(payload, sizeof(payload), "DEVICE %s %s", id, device_type_to_string(type));
-    if (written < 0 || (size_t)written >= sizeof(payload)) {
-        return -1;
-    }
-    return protocol_format_line(out, len, RESP_DEVICE, payload, NULL);
 }
 
 /** @see protocol_format_device_ex() */

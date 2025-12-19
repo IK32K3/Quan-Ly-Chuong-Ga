@@ -161,8 +161,9 @@ char *handle_command(int fd, enum CommandType cmd, char *args) {
         return alloc_line(line);
     }
     case CMD_CONNECT: {
-        char dev_id[MAX_ID_LEN], app_id[32], password[MAX_PASSWORD_LEN];
-        if (!args || sscanf(args, "%31s %31s %63s", dev_id, app_id, password) != 3) {
+        char dev_id[MAX_ID_LEN], password[MAX_PASSWORD_LEN];
+        /* Format: CONNECT <device_id> <app_id> <password> (app_id hiện chưa dùng). */
+        if (!args || sscanf(args, "%31s %*31s %63s", dev_id, password) != 2) {
             protocol_format_bad_request(line, sizeof(line));
             return alloc_line(line);
         }

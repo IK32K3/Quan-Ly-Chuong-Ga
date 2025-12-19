@@ -1,7 +1,6 @@
 #include "net_client.h"
 #include <unistd.h>
 #include <string.h>
-#include <stdio.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <poll.h>
