@@ -1,4 +1,5 @@
 #include "../server/coop_logic.h"
+#include "coops.h"
 #include "devices.h"
 #include "session_auth.h"
 #include "monitor_log.h"
@@ -11,13 +12,46 @@
 #include <string.h>
 
 /* Biến dùng chung cho B */
+static struct CoopsContext g_coops;
 static struct DevicesContext g_devices;
 
-void coop_logic_init(void) {
-    /* Thu tai tu file, neu khong co thi khoi tao mac dinh */
-    if (storage_load_devices(&g_devices, "devices_state.json") != 0) {
-        devices_context_init(&g_devices);
+static const char *FARM_STATE_PATH = "farm_state.json";
+
+static void merge_farm_from_disk(void) {
+    struct CoopsContext file_coops;
+    struct DevicesContext file_devices;
+    if (storage_load_farm(&file_coops, &file_devices, FARM_STATE_PATH) != 0) {
+        return;
     }
+
+    for (size_t i = 0; i < file_coops.count; ++i) {
+        (void)coops_upsert(&g_coops, file_coops.coops[i].id, file_coops.coops[i].name);
+    }
+
+    for (size_t i = 0; i < file_devices.count; ++i) {
+        if (g_devices.count >= MAX_DEVICES) break;
+        const struct Device *d = &file_devices.devices[i];
+        if (devices_find(&g_devices, d->identity.id)) continue;
+        g_devices.devices[g_devices.count++] = *d;
+    }
+}
+
+static void sanitize_coop_names(void) {
+    for (size_t i = 0; i < g_coops.count; ++i) {
+        if (g_coops.coops[i].name[0] == '\0' || strcmp(g_coops.coops[i].name, "0") == 0) {
+            snprintf(g_coops.coops[i].name, sizeof(g_coops.coops[i].name), "Chuong %d", g_coops.coops[i].id);
+        }
+    }
+}
+
+void coop_logic_init(void) {
+    /* Thu tai tu file farm_state.json, neu khong co thi khoi tao mac dinh */
+    if (storage_load_farm(&g_coops, &g_devices, FARM_STATE_PATH) != 0) {
+        coops_init_default(&g_coops);
+        devices_context_init(&g_devices);
+        (void)storage_save_farm(&g_coops, &g_devices, FARM_STATE_PATH);
+    }
+    sanitize_coop_names();
 }
 
 /* Tiện ích cấp phát response */
@@ -31,14 +65,26 @@ static char *alloc_line(const char *src) {
 }
 
 /* Parse số thực đơn giản */
-static void parse_two_doubles(const char *payload, const char *fmt, double *a, double *b) {
-    if (payload && fmt && a && b) {
-        sscanf(payload, fmt, a, b);
-    }
+static int parse_two_doubles(const char *payload, const char *fmt, double *a, double *b) {
+    if (!payload || !fmt || !a || !b) return 0;
+    return sscanf(payload, fmt, a, b);
+}
+
+static int parse_one_double(const char *payload, const char *fmt, double *out) {
+    if (!payload || !fmt || !out) return 0;
+    return sscanf(payload, fmt, out);
+}
+
+static int parse_three_doubles(const char *payload, const char *fmt, double *a, double *b, double *c) {
+    if (!payload || !fmt || !a || !b || !c) return 0;
+    return sscanf(payload, fmt, a, b, c);
 }
 
 /* Gửi nhiều dòng cho SCAN */
 static void handle_scan(int fd) {
+    /* Neu user edit farm_state.json ben ngoai, SCAN se nap them cac thiet bi moi */
+    merge_farm_from_disk();
+
     struct DeviceIdentity list[MAX_DEVICES];
     size_t found = devices_scan(&g_devices, list, MAX_DEVICES);
     if (found == 0) {
@@ -49,7 +95,21 @@ static void handle_scan(int fd) {
     }
     for (size_t i = 0; i < found; ++i) {
         char line[MAX_LINE_LEN];
-        protocol_format_device(line, sizeof(line), list[i].id, list[i].type);
+        protocol_format_device_ex(line, sizeof(line), list[i].id, list[i].type, list[i].coop_id);
+        send_line(fd, line);
+    }
+}
+
+static void handle_coop_list(int fd) {
+    if (g_coops.count == 0) {
+        char line[MAX_LINE_LEN];
+        protocol_format_no_coop(line, sizeof(line));
+        send_line(fd, line);
+        return;
+    }
+    for (size_t i = 0; i < g_coops.count; ++i) {
+        char line[MAX_LINE_LEN];
+        protocol_format_coop(line, sizeof(line), g_coops.coops[i].id, g_coops.coops[i].name);
         send_line(fd, line);
     }
 }
@@ -61,6 +121,23 @@ char *handle_command(int fd, enum CommandType cmd, char *args) {
     case CMD_SCAN:
         handle_scan(fd);
         return NULL;
+    case CMD_COOP_LIST:
+        handle_coop_list(fd);
+        return NULL;
+    case CMD_COOP_ADD: {
+        if (!args || args[0] == '\0') {
+            protocol_format_bad_request(line, sizeof(line));
+            return alloc_line(line);
+        }
+        int new_id = 0;
+        if (coops_add(&g_coops, args, &new_id) != 0) {
+            protocol_format_bad_request(line, sizeof(line));
+            return alloc_line(line);
+        }
+        (void)storage_save_farm(&g_coops, &g_devices, FARM_STATE_PATH);
+        protocol_format_coopadd_ok(line, sizeof(line), new_id);
+        return alloc_line(line);
+    }
     case CMD_CONNECT: {
         char dev_id[MAX_ID_LEN], app_id[32], password[MAX_PASSWORD_LEN];
         if (!args || sscanf(args, "%31s %31s %63s", dev_id, app_id, password) != 3) {
@@ -144,15 +221,32 @@ char *handle_command(int fd, enum CommandType cmd, char *args) {
             rc = devices_set_state(dev, DEVICE_OFF);
         } else if (strcmp(action, "FEED_NOW") == 0 && dev->identity.type == DEVICE_FEEDER) {
             double food = dev->data.feeder.W, water = dev->data.feeder.Vw;
-            parse_two_doubles(rest, "{\"food\":%lf,\"water\":%lf}", &food, &water);
+            if (parse_two_doubles(rest, "{\"food\":%lf,\"water\":%lf}", &food, &water) < 2) {
+                protocol_format_bad_request(line, sizeof(line));
+                return alloc_line(line);
+            }
             rc = devices_feed_now(dev, food, water);
+        } else if (strcmp(action, "DRINK_NOW") == 0 && dev->identity.type == DEVICE_DRINKER) {
+            double water = dev->data.drinker.Vw;
+            if (parse_one_double(rest, "{\"water\":%lf}", &water) < 1) {
+                protocol_format_bad_request(line, sizeof(line));
+                return alloc_line(line);
+            }
+            rc = devices_drink_now(dev, water);
+        } else if (strcmp(action, "SPRAY_NOW") == 0 && dev->identity.type == DEVICE_SPRAYER) {
+            double Vh = dev->data.sprayer.Vh;
+            if (parse_one_double(rest, "{\"Vh\":%lf}", &Vh) < 1) {
+                protocol_format_bad_request(line, sizeof(line));
+                return alloc_line(line);
+            }
+            rc = devices_spray_now(dev, Vh);
         }
         if (rc != 0) {
             protocol_format_bad_request(line, sizeof(line));
             return alloc_line(line);
         }
         log_device_event(dev_id, action);
-        storage_save_devices(&g_devices, "devices_state.json");
+        (void)storage_save_farm(&g_coops, &g_devices, "farm_state.json");
         protocol_format_control_ok(line, sizeof(line));
         return alloc_line(line);
     }
@@ -184,23 +278,38 @@ char *handle_command(int fd, enum CommandType cmd, char *args) {
         int rc = -1;
         if (dev->identity.type == DEVICE_FAN) {
             double Tmax = dev->data.fan.Tmax, Tp1 = dev->data.fan.Tp1;
-            parse_two_doubles(json_payload, "{\"Tmax\":%lf,\"Tp1\":%lf}", &Tmax, &Tp1);
+            if (parse_two_doubles(json_payload, "{\"Tmax\":%lf,\"Tp1\":%lf}", &Tmax, &Tp1) < 2) {
+                protocol_format_bad_request(line, sizeof(line));
+                return alloc_line(line);
+            }
             rc = devices_set_config_fan(dev, Tmax, Tp1);
         } else if (dev->identity.type == DEVICE_HEATER) {
             double Tmin = dev->data.heater.Tmin, Tp2 = dev->data.heater.Tp2;
-            parse_two_doubles(json_payload, "{\"Tmin\":%lf,\"Tp2\":%lf}", &Tmin, &Tp2);
+            if (parse_two_doubles(json_payload, "{\"Tmin\":%lf,\"Tp2\":%lf}", &Tmin, &Tp2) < 2) {
+                protocol_format_bad_request(line, sizeof(line));
+                return alloc_line(line);
+            }
             rc = devices_set_config_heater(dev, Tmin, Tp2, dev->data.heater.mode);
         } else if (dev->identity.type == DEVICE_SPRAYER) {
             double Hmin = dev->data.sprayer.Hmin, Hp = dev->data.sprayer.Hp, Vh = dev->data.sprayer.Vh;
-            sscanf(json_payload, "{\"Hmin\":%lf,\"Hp\":%lf,\"Vh\":%lf}", &Hmin, &Hp, &Vh);
+            if (parse_three_doubles(json_payload, "{\"Hmin\":%lf,\"Hp\":%lf,\"Vh\":%lf}", &Hmin, &Hp, &Vh) < 3) {
+                protocol_format_bad_request(line, sizeof(line));
+                return alloc_line(line);
+            }
             rc = devices_set_config_sprayer(dev, Hmin, Hp, Vh);
         } else if (dev->identity.type == DEVICE_FEEDER) {
             double W = dev->data.feeder.W, Vw = dev->data.feeder.Vw;
-            parse_two_doubles(json_payload, "{\"W\":%lf,\"Vw\":%lf}", &W, &Vw);
+            if (parse_two_doubles(json_payload, "{\"W\":%lf,\"Vw\":%lf}", &W, &Vw) < 2) {
+                protocol_format_bad_request(line, sizeof(line));
+                return alloc_line(line);
+            }
             rc = devices_set_config_feeder(dev, W, Vw, dev->data.feeder.schedule, dev->data.feeder.schedule_count);
         } else if (dev->identity.type == DEVICE_DRINKER) {
             double Vw = dev->data.drinker.Vw;
-            sscanf(json_payload, "{\"Vw\":%lf}", &Vw);
+            if (parse_one_double(json_payload, "{\"Vw\":%lf}", &Vw) < 1) {
+                protocol_format_bad_request(line, sizeof(line));
+                return alloc_line(line);
+            }
             rc = devices_set_config_drinker(dev, Vw, dev->data.drinker.schedule, dev->data.drinker.schedule_count);
         }
         if (rc != 0) {
@@ -211,7 +320,7 @@ char *handle_command(int fd, enum CommandType cmd, char *args) {
         devices_info_json(dev, json, sizeof(json));
         protocol_format_setcfg_ok(line, sizeof(line), json);
         log_device_event(dev_id, "SETCFG");
-        storage_save_devices(&g_devices, "devices_state.json");
+        (void)storage_save_farm(&g_coops, &g_devices, FARM_STATE_PATH);
         return alloc_line(line);
     }
     case CMD_CHPASS: {
@@ -235,7 +344,7 @@ char *handle_command(int fd, enum CommandType cmd, char *args) {
             return alloc_line(line);
         }
         log_device_event(dev_id, "CHPASS");
-        storage_save_devices(&g_devices, "devices_state.json");
+        (void)storage_save_farm(&g_coops, &g_devices, FARM_STATE_PATH);
         protocol_format_pass_ok(line, sizeof(line));
         return alloc_line(line);
     }
@@ -257,7 +366,9 @@ char *handle_command(int fd, enum CommandType cmd, char *args) {
     }
     case CMD_ADD_DEVICE: {
         char dev_id[MAX_ID_LEN], type_str[MAX_TYPE_LEN], pw[MAX_PASSWORD_LEN];
-        if (!args || sscanf(args, "%31s %15s %63s", dev_id, type_str, pw) != 3) {
+        int coop_id = 0;
+        int parsed = args ? sscanf(args, "%31s %15s %63s %d", dev_id, type_str, pw, &coop_id) : 0;
+        if (parsed < 3) {
             protocol_format_bad_request(line, sizeof(line));
             return alloc_line(line);
         }
@@ -266,13 +377,47 @@ char *handle_command(int fd, enum CommandType cmd, char *args) {
             protocol_format_bad_request(line, sizeof(line));
             return alloc_line(line);
         }
-        if (devices_add(&g_devices, dev_id, type, pw) != 0) {
+        if (coop_id > 0 && !coops_find(&g_coops, coop_id)) {
             protocol_format_bad_request(line, sizeof(line));
             return alloc_line(line);
         }
-        storage_save_devices(&g_devices, "devices_state.json");
+        if (coop_id <= 0) {
+            protocol_format_bad_request(line, sizeof(line));
+            return alloc_line(line);
+        }
+        if (devices_add(&g_devices, dev_id, type, pw, coop_id) != 0) {
+            protocol_format_bad_request(line, sizeof(line));
+            return alloc_line(line);
+        }
+        (void)storage_save_farm(&g_coops, &g_devices, FARM_STATE_PATH);
         log_device_event(dev_id, "ADD_DEVICE");
         protocol_format_add_ok(line, sizeof(line));
+        return alloc_line(line);
+    }
+    case CMD_ASSIGN_DEVICE: {
+        char dev_id[MAX_ID_LEN];
+        int coop_id = 0;
+        if (!args || sscanf(args, "%31s %d", dev_id, &coop_id) != 2) {
+            protocol_format_bad_request(line, sizeof(line));
+            return alloc_line(line);
+        }
+        if (coop_id <= 0) {
+            protocol_format_bad_request(line, sizeof(line));
+            return alloc_line(line);
+        }
+        if (!coops_find(&g_coops, coop_id)) {
+            protocol_format_bad_request(line, sizeof(line));
+            return alloc_line(line);
+        }
+        struct Device *dev = devices_find(&g_devices, dev_id);
+        if (!dev) {
+            protocol_format_no_device_err(line, sizeof(line));
+            return alloc_line(line);
+        }
+        dev->identity.coop_id = coop_id;
+        (void)storage_save_farm(&g_coops, &g_devices, FARM_STATE_PATH);
+        log_device_event(dev_id, "ASSIGN_DEVICE");
+        protocol_format_assign_ok(line, sizeof(line));
         return alloc_line(line);
     }
     default:

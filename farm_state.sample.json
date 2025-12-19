@@ -1,0 +1,123 @@
+{
+  "coops": [
+    {
+      "id": 1,
+      "name": "Chuong 1",
+      "devices": [
+        {
+          "password": "123456",
+          "info": {
+            "device_id": "SENSOR1",
+            "type": "sensor",
+            "temperature": 32.5,
+            "humidity": 58.2,
+            "unit_temperature": "C",
+            "unit_humidity": "%"
+          }
+        },
+        {
+          "password": "123456",
+          "info": {
+            "device_id": "FAN1",
+            "type": "fan",
+            "state": "ON",
+            "Tmax": 32.0,
+            "Tp1": 28.0,
+            "unit_temp": "C"
+          }
+        },
+        {
+          "password": "123456",
+          "info": {
+            "device_id": "HEAT1",
+            "type": "heater",
+            "state": "OFF",
+            "Tmin": 20.0,
+            "Tp2": 24.0,
+            "mode": "AUTO",
+            "unit_temp": "C"
+          }
+        },
+        {
+          "password": "123456",
+          "info": {
+            "device_id": "MIST1",
+            "type": "sprayer",
+            "state": "OFF",
+            "Hmin": 45.0,
+            "Hp": 60.0,
+            "Vh": 0.5,
+            "unit_humidity": "%",
+            "unit_flow": "L/h"
+          }
+        },
+        {
+          "password": "123456",
+          "info": {
+            "device_id": "FEED1",
+            "type": "feeder",
+            "state": "ON",
+            "W": 0.3,
+            "Vw": 0.5,
+            "unit_food": "kg",
+            "unit_water": "L",
+            "schedule": [
+              { "time": "06:00", "food": 0.3, "water": 0.5 },
+              { "time": "16:00", "food": 0.4, "water": 0.6 }
+            ]
+          }
+        },
+        {
+          "password": "123456",
+          "info": {
+            "device_id": "EGG1",
+            "type": "egg_counter",
+            "egg_count": 35
+          }
+        },
+        {
+          "password": "123456",
+          "info": {
+            "device_id": "DRINK1",
+            "type": "drinker",
+            "state": "ON",
+            "Vw": 0.4,
+            "unit_water": "L",
+            "schedule": [
+              { "time": "06:00", "water": 0.3 },
+              { "time": "16:00", "water": 0.5 }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "name": "Chuong 2",
+      "devices": [
+        {
+          "password": "123456",
+          "info": {
+            "device_id": "SENSOR2",
+            "type": "sensor",
+            "temperature": 30.0,
+            "humidity": 55.0,
+            "unit_temperature": "C",
+            "unit_humidity": "%"
+          }
+        },
+        {
+          "password": "123456",
+          "info": {
+            "device_id": "FAN2",
+            "type": "fan",
+            "state": "OFF",
+            "Tmax": 31.0,
+            "Tp1": 27.0,
+            "unit_temp": "C"
+          }
+        }
+      ]
+    }
+  ]
+}

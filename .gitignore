@@ -1,0 +1,13 @@
+client_app
+server_app
+bin/
+*.o
+*.a
+*.so
+*.dylib
+
+# runtime data
+farm_state.json
+devices_state.json
+coops.json
+device_log.txt

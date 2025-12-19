@@ -43,11 +43,17 @@ static int backend_scan(void *user_data, struct DeviceIdentity *out, size_t max_
         }
         if (code == RESP_DEVICE) {
             char id[MAX_ID_LEN], type_str[MAX_TYPE_LEN];
-            if (sscanf(payload, "DEVICE %31s %15s", id, type_str) == 2) {
+            int coop_id = 0;
+            if (strcmp(text, "DEVICE") != 0) {
+                continue;
+            }
+            int n = sscanf(payload, "%31s %15s %d", id, type_str, &coop_id);
+            if (n >= 2) {
                 if (*found < max_out) {
                     strncpy(out[*found].id, id, sizeof(out[*found].id) - 1);
                     out[*found].id[sizeof(out[*found].id) - 1] = '\0';
                     out[*found].type = device_type_from_string(type_str);
+                    out[*found].coop_id = (n == 3) ? coop_id : 0;
                     (*found)++;
                 }
             }
@@ -73,7 +79,7 @@ static int backend_connect(void *user_data, const char *device_id, const char *p
     if (code != RESP_CONNECT_OK) return -1;
     strncpy(out_token, payload, token_len - 1);
     out_token[token_len - 1] = '\0';
-    if (out_type) *out_type = DEVICE_UNKNOWN; /* type se lay tu scan */
+    (void)out_type; /* type da duoc biet tu SCAN/UI */
     return 0;
 }
 
@@ -117,6 +123,89 @@ static int backend_setcfg(void *user_data, const char *device_id, const char *to
     return code == RESP_SETCFG_OK ? 0 : -1;
 }
 
+static int backend_add_device(void *user_data, const char *device_id, enum DeviceType type, const char *password, int coop_id) {
+    struct NetBackend *b = (struct NetBackend *)user_data;
+    if (!device_id || device_id[0] == '\0') return -1;
+    if (coop_id <= 0) return -1;
+    if (!password || password[0] == '\0') password = "123456";
+
+    char line[MAX_LINE_LEN];
+    snprintf(line, sizeof(line), "ADD %s %s %s %d", device_id, device_type_to_string(type), password, coop_id);
+    if (client_send_line(b->fd, line) != 0) return -1;
+    if (client_recv_line(b->fd, line, sizeof(line)) != 0) return -1;
+    int code = 0; char text[64]; char payload[64] = {0};
+    if (parse_response(line, &code, text, sizeof(text), payload, sizeof(payload)) != 0) return -1;
+    return code == RESP_ADD_OK ? 0 : -1;
+}
+
+static int backend_assign(void *user_data, const char *device_id, int coop_id) {
+    struct NetBackend *b = (struct NetBackend *)user_data;
+    char line[MAX_LINE_LEN];
+    snprintf(line, sizeof(line), "ASSIGN %s %d", device_id, coop_id);
+    if (client_send_line(b->fd, line) != 0) return -1;
+    if (client_recv_line(b->fd, line, sizeof(line)) != 0) return -1;
+    int code = 0; char text[64]; char payload[64] = {0};
+    if (parse_response(line, &code, text, sizeof(text), payload, sizeof(payload)) != 0) return -1;
+    return code == RESP_ASSIGN_OK ? 0 : -1;
+}
+
+static int backend_coop_list(void *user_data, struct CoopList *out) {
+    struct NetBackend *b = (struct NetBackend *)user_data;
+    if (!out) return -1;
+    coop_list_init(out);
+    if (client_send_line(b->fd, "COOPLIST") != 0) return -1;
+
+    char buf[MAX_LINE_LEN];
+    while (1) {
+        int r = client_recv_line_timeout(b->fd, buf, sizeof(buf), 200);
+        if (r == 1) break;
+        if (r < 0) return -1;
+        int code = 0;
+        char text[64], payload[MAX_LINE_LEN] = {0};
+        if (parse_response(buf, &code, text, sizeof(text), payload, sizeof(payload)) != 0) continue;
+        if (code == RESP_NO_COOP) {
+            break;
+        }
+        if (code != RESP_COOP) {
+            break;
+        }
+        if (strcmp(text, "COOP") != 0) {
+            continue;
+        }
+        int id = 0;
+        char name[MAX_COOP_NAME] = {0};
+        if (sscanf(payload, "%d %63[^\n]", &id, name) == 2) {
+            if (out->count < MAX_COOPS) {
+                if (strcmp(name, "0") == 0) {
+                    continue;
+                }
+                struct Coop *c = &out->coops[out->count++];
+                memset(c, 0, sizeof(*c));
+                c->id = id;
+                strncpy(c->name, name, sizeof(c->name) - 1);
+                c->name[sizeof(c->name) - 1] = '\0';
+            }
+        }
+    }
+    return 0;
+}
+
+static int backend_coop_add(void *user_data, const char *name, int *out_id) {
+    struct NetBackend *b = (struct NetBackend *)user_data;
+    if (!name || name[0] == '\0') return -1;
+    char line[MAX_LINE_LEN];
+    snprintf(line, sizeof(line), "COOPADD %s", name);
+    if (client_send_line(b->fd, line) != 0) return -1;
+    if (client_recv_line(b->fd, line, sizeof(line)) != 0) return -1;
+    int code = 0;
+    char text[64], payload[MAX_LINE_LEN] = {0};
+    if (parse_response(line, &code, text, sizeof(text), payload, sizeof(payload)) != 0) return -1;
+    if (code != RESP_COOPADD_OK) return -1;
+    int id = atoi(payload);
+    if (out_id) *out_id = id;
+    return 0;
+}
+
 static void read_input_line(const char *prompt, char *out, size_t out_len, const char *default_val) {
     printf("%s", prompt);
     if (fgets(out, (int)out_len, stdin)) {
@@ -132,12 +221,24 @@ static void read_input_line(const char *prompt, char *out, size_t out_len, const
     }
 }
 
-int main(void) {
-    char host[64];
-    char port_str[16];
-    read_input_line("Nhap IP server (mac dinh 127.0.0.1): ", host, sizeof(host), "127.0.0.1");
-    read_input_line("Nhap cong (mac dinh 8888): ", port_str, sizeof(port_str), "8888");
-    int port = atoi(port_str);
+int main(int argc, char **argv) {
+    /* Ho tro: ./client_app <ip> <port> */
+    char host[64] = "127.0.0.1";
+    int port = 8888;
+
+    if (argc >= 2) {
+        strncpy(host, argv[1], sizeof(host) - 1);
+        host[sizeof(host) - 1] = '\0';
+    } else {
+        read_input_line("Nhap IP server (mac dinh 127.0.0.1): ", host, sizeof(host), "127.0.0.1");
+    }
+    if (argc >= 3) {
+        port = atoi(argv[2]);
+    } else {
+        char port_str[16];
+        read_input_line("Nhap cong (mac dinh 8888): ", port_str, sizeof(port_str), "8888");
+        port = atoi(port_str);
+    }
     if (port <= 0) port = 8888;
 
     int fd = client_connect(host, port);
@@ -157,11 +258,16 @@ int main(void) {
         .connect = backend_connect,
         .info = backend_info,
         .control = backend_control,
-        .setcfg = backend_setcfg
+        .setcfg = backend_setcfg,
+        .add_device = backend_add_device,
+        .assign = backend_assign,
+        .coop_list = backend_coop_list,
+        .coop_add = backend_coop_add
     };
 
     struct UiContext ui;
     ui_context_init(&ui, &ops);
+    (void)backend_coop_list(&backend, &ui.coop_list);
     ui_run(&ui);
 
     client_disconnect(fd);

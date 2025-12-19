@@ -17,8 +17,15 @@ int coop_add(struct CoopList *list, const char *name) {
     if (list->count >= MAX_COOPS) {
         return -2;
     }
+    int max_id = 0;
+    for (size_t i = 0; i < list->count; ++i) {
+        if (list->coops[i].id > max_id) {
+            max_id = list->coops[i].id;
+        }
+    }
     struct Coop *c = &list->coops[list->count];
     memset(c, 0, sizeof(*c));
+    c->id = max_id + 1;
     strncpy(c->name, name, sizeof(c->name) - 1);
     list->count++;
     return (int)(list->count - 1);

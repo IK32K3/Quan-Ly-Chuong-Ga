@@ -4,6 +4,7 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <poll.h>
+#include <stddef.h>
 #include "../shared/config.h"
 #include "../shared/protocol.h"
 
@@ -24,6 +25,6 @@ void server_run(int server_fd);
 int send_line(int fd, const char *line);
 
 // Hàm nhận và xử lý dòng từ client (gọi handle_command từ B)
-void handle_client_line(struct ClientConnection *conn);
+void handle_client_line(struct ClientConnection *conn, struct pollfd *pfd);
 
 #endif  /* NET_SERVER_H */

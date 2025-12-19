@@ -13,6 +13,10 @@ struct UiBackendOps {
     int (*info)(void *user_data, const char *device_id, const char *token, char *out_json, size_t json_len);
     int (*control)(void *user_data, const char *device_id, const char *token, const char *action, const char *payload);
     int (*setcfg)(void *user_data, const char *device_id, const char *token, const char *json_payload);
+    int (*add_device)(void *user_data, const char *device_id, enum DeviceType type, const char *password, int coop_id);
+    int (*assign)(void *user_data, const char *device_id, int coop_id);
+    int (*coop_list)(void *user_data, struct CoopList *out);
+    int (*coop_add)(void *user_data, const char *name, int *out_id);
 };
 
 struct ClientDevice {

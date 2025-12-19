@@ -18,6 +18,28 @@ static struct ClientDevice *find_client_device(struct UiContext *ctx, const char
     return NULL;
 }
 
+static void print_coops_with_connection(const struct UiContext *ctx) {
+    if (!ctx) return;
+    printf("Danh sach chuong nuoi:\n");
+    for (size_t i = 0; i < ctx->coop_list.count; ++i) {
+        const struct Coop *c = &ctx->coop_list.coops[i];
+        printf("%zu) %s\n", i + 1, c->name);
+        size_t printed = 0;
+        for (size_t j = 0; j < c->device_count; ++j) {
+            const struct CoopDevice *d = &c->devices[j];
+            const struct ClientDevice *cd = find_client_device((struct UiContext *)ctx, d->device_id);
+            if (!(cd && cd->connected)) {
+                continue;
+            }
+            printf("   - %s (%s)\n", d->device_id, device_type_to_string(d->type));
+            printed++;
+        }
+        if (printed == 0) {
+            printf("   (Chua co thiet bi da ket noi)\n");
+        }
+    }
+}
+
 static struct ClientDevice *ensure_client_device(struct UiContext *ctx, const char *id, enum DeviceType type) {
     struct ClientDevice *existing = find_client_device(ctx, id);
     if (existing) {
@@ -77,7 +99,10 @@ static int select_coop_index(const struct CoopList *list, size_t *out_index) {
         printf("Chua co chuong nao. Hay them chuong truoc.\n");
         return -1;
     }
-    coop_print(list);
+    printf("Danh sach chuong nuoi:\n");
+    for (size_t i = 0; i < list->count; ++i) {
+        printf("%zu) %s\n", i + 1, list->coops[i].name);
+    }
     printf("Chon so thu tu chuong (0 de quay lai): ");
     char line[16];
     if (read_line(line, sizeof(line)) != 0) return -1;
@@ -93,6 +118,31 @@ static int select_coop_index(const struct CoopList *list, size_t *out_index) {
     return 0;
 }
 
+static void refresh_coops(struct UiContext *ctx) {
+    if (!ctx || !ctx->ops.coop_list || !ctx->ops.scan) return;
+    if (ctx->ops.coop_list(ctx->ops.user_data, &ctx->coop_list) != 0) {
+        return;
+    }
+    for (size_t i = 0; i < ctx->coop_list.count; ++i) {
+        ctx->coop_list.coops[i].device_count = 0;
+    }
+
+    struct DeviceIdentity devices[MAX_DEVICES];
+    size_t found = 0;
+    if (ctx->ops.scan(ctx->ops.user_data, devices, MAX_DEVICES, &found) != 0 || found == 0) {
+        return;
+    }
+
+    for (size_t i = 0; i < found; ++i) {
+        for (size_t j = 0; j < ctx->coop_list.count; ++j) {
+            if (devices[i].coop_id == ctx->coop_list.coops[j].id) {
+                coop_add_device(&ctx->coop_list, j, devices[i].id, devices[i].type);
+                break;
+            }
+        }
+    }
+}
+
 static int select_device_in_coop(const struct UiContext *ctx, size_t coop_index, char *out_id, size_t out_id_len, enum DeviceType *out_type) {
     if (!ctx || coop_index >= ctx->coop_list.count) return -1;
     const struct Coop *c = &ctx->coop_list.coops[coop_index];
@@ -102,7 +152,12 @@ static int select_device_in_coop(const struct UiContext *ctx, size_t coop_index,
     }
     printf("Thiet bi trong chuong %s:\n", c->name);
     for (size_t i = 0; i < c->device_count; ++i) {
-        printf("%zu) %s (%s)\n", i + 1, c->devices[i].device_id, device_type_to_string(c->devices[i].type));
+        const struct ClientDevice *cd = find_client_device((struct UiContext *)ctx, c->devices[i].device_id);
+        printf("%zu) %s (%s)%s\n",
+               i + 1,
+               c->devices[i].device_id,
+               device_type_to_string(c->devices[i].type),
+               (cd && cd->connected) ? " [DA KET NOI]" : "");
     }
     printf("Chon thiet bi (0 de quay lai): ");
     char line[16];
@@ -122,17 +177,47 @@ static int select_device_in_coop(const struct UiContext *ctx, size_t coop_index,
     return 0;
 }
 
-/* Dong bo tat ca thiet bi tu backend vao chuong (mo phong chuong co day thiet bi) */
-static void autopopulate_coop_devices(struct UiContext *ctx, size_t coop_index) {
-    if (!ctx || coop_index >= ctx->coop_list.count) return;
-    struct DeviceIdentity devices[MAX_DEVICES];
-    size_t found = 0;
-    if (ctx->ops.scan(ctx->ops.user_data, devices, MAX_DEVICES, &found) != 0 || found == 0) {
-        return;
+static int select_connected_device_in_coop(const struct UiContext *ctx, size_t coop_index, char *out_id, size_t out_id_len, enum DeviceType *out_type) {
+    if (!ctx || coop_index >= ctx->coop_list.count) return -1;
+    const struct Coop *c = &ctx->coop_list.coops[coop_index];
+    if (c->device_count == 0) {
+        printf("Chua co thiet bi nao trong chuong nay.\n");
+        return -1;
     }
-    for (size_t i = 0; i < found; ++i) {
-        coop_add_device(&ctx->coop_list, coop_index, devices[i].id, devices[i].type);
+
+    size_t mapped[MAX_DEVICES];
+    size_t mapped_count = 0;
+    for (size_t i = 0; i < c->device_count; ++i) {
+        const struct ClientDevice *cd = find_client_device((struct UiContext *)ctx, c->devices[i].device_id);
+        if (cd && cd->connected) {
+            mapped[mapped_count++] = i;
+        }
     }
+    if (mapped_count == 0) {
+        printf("Chua ket noi thiet bi nao trong chuong %s.\n", c->name);
+        return -1;
+    }
+
+    printf("Thiet bi da ket noi trong chuong %s:\n", c->name);
+    for (size_t i = 0; i < mapped_count; ++i) {
+        const struct CoopDevice *d = &c->devices[mapped[i]];
+        printf("%zu) %s (%s)\n", i + 1, d->device_id, device_type_to_string(d->type));
+    }
+    printf("Chon thiet bi (0 de quay lai): ");
+    char line[16];
+    if (read_line(line, sizeof(line)) != 0) return -1;
+    long pick = strtol(line, NULL, 10);
+    if (pick == 0) return -1;
+    if (pick < 0 || (size_t)pick > mapped_count) {
+        printf("Lua chon khong hop le.\n");
+        return -1;
+    }
+
+    const struct CoopDevice *d = &c->devices[mapped[pick - 1]];
+    strncpy(out_id, d->device_id, out_id_len - 1);
+    out_id[out_id_len - 1] = '\0';
+    if (out_type) *out_type = d->type;
+    return 0;
 }
 
 static const char *find_key(const char *json, const char *key) {
@@ -253,12 +338,11 @@ static void display_info(const char *json) {
 }
 
 static void menu_connect(struct UiContext *ctx) {
+    refresh_coops(ctx);
     size_t coop_idx = 0;
     if (select_coop_index(&ctx->coop_list, &coop_idx) != 0) {
         return;
     }
-    /* Tu dong quet & dong bo thiet bi trong chuong truoc khi ket noi */
-    autopopulate_coop_devices(ctx, coop_idx);
     char id[MAX_ID_LEN];
     enum DeviceType type = DEVICE_UNKNOWN;
     if (select_device_in_coop(ctx, coop_idx, id, sizeof(id), &type) != 0) {
@@ -296,38 +380,16 @@ static const struct ClientDevice *require_connected(struct UiContext *ctx, const
 
 /* Menu xem thong tin: chi cho phep thiet bi da ket noi trong chuong */
 static void menu_info(struct UiContext *ctx) {
+    refresh_coops(ctx);
     size_t coop_idx = 0;
     if (select_coop_index(&ctx->coop_list, &coop_idx) != 0) {
         return;
     }
-    const struct Coop *c = &ctx->coop_list.coops[coop_idx];
-    size_t mapped[MAX_DEVICES];
-    size_t mapped_count = 0;
-    for (size_t i = 0; i < c->device_count; ++i) {
-        struct ClientDevice *cd = find_client_device(ctx, c->devices[i].device_id);
-        if (cd && cd->connected) {
-            mapped[mapped_count++] = i;
-        }
-    }
-    if (mapped_count == 0) {
-        printf("Chua ket noi thiet bi nao trong chuong nay.\n");
+    char id[MAX_ID_LEN];
+    enum DeviceType type = DEVICE_UNKNOWN;
+    if (select_connected_device_in_coop(ctx, coop_idx, id, sizeof(id), &type) != 0) {
         return;
     }
-    printf("Thiet bi da ket noi trong chuong %s:\n", c->name);
-    for (size_t i = 0; i < mapped_count; ++i) {
-        const struct CoopDevice *d = &c->devices[mapped[i]];
-        printf("%zu) %s (%s)\n", i + 1, d->device_id, device_type_to_string(d->type));
-    }
-    printf("Chon thiet bi (0 de quay lai): ");
-    char line[16];
-    if (read_line(line, sizeof(line)) != 0) return;
-    long pick = strtol(line, NULL, 10);
-    if (pick == 0) return;
-    if (pick < 0 || (size_t)pick > mapped_count) {
-        printf("Lua chon khong hop le.\n");
-        return;
-    }
-    const char *id = c->devices[mapped[pick - 1]].device_id;
     const struct ClientDevice *d = require_connected(ctx, id);
     if (!d) {
         return;
@@ -343,13 +405,14 @@ static void menu_info(struct UiContext *ctx) {
 
 /* Dieu khien thiet bi: ON/OFF hoac hanh dong truc tiep (feeder/drinker/sprayer) */
 static void menu_control(struct UiContext *ctx, int direct_mode) {
+    refresh_coops(ctx);
     size_t coop_idx = 0;
     if (select_coop_index(&ctx->coop_list, &coop_idx) != 0) {
         return;
     }
     char id[MAX_ID_LEN];
     enum DeviceType type = DEVICE_UNKNOWN;
-    if (select_device_in_coop(ctx, coop_idx, id, sizeof(id), &type) != 0) {
+    if (select_connected_device_in_coop(ctx, coop_idx, id, sizeof(id), &type) != 0) {
         return;
     }
     const struct ClientDevice *d = require_connected(ctx, id);
@@ -397,13 +460,14 @@ static void menu_control(struct UiContext *ctx, int direct_mode) {
 
 /* Thiet lap tham so theo tung loai thiet bi */
 static void menu_setcfg(struct UiContext *ctx) {
+    refresh_coops(ctx);
     size_t coop_idx = 0;
     if (select_coop_index(&ctx->coop_list, &coop_idx) != 0) {
         return;
     }
     char id[MAX_ID_LEN];
     enum DeviceType type = DEVICE_UNKNOWN;
-    if (select_device_in_coop(ctx, coop_idx, id, sizeof(id), &type) != 0) {
+    if (select_connected_device_in_coop(ctx, coop_idx, id, sizeof(id), &type) != 0) {
         return;
     }
     const struct ClientDevice *d = require_connected(ctx, id);
@@ -465,10 +529,11 @@ static void menu_manage_coop(struct UiContext *ctx) {
     if (!ctx) return;
     int back = 0;
     while (!back) {
+        refresh_coops(ctx);
         printf("=== Quan ly chuong ===\n");
         printf("1. Them chuong\n");
-        printf("2. Them thiet bi vao chuong\n");
-        printf("3. Xem danh sach chuong\n");
+        printf("2. Xem danh sach chuong\n");
+        printf("3. Dang ky thiet bi moi\n");
         printf("0. Quay lai\n");
         printf("Chon: ");
         char line[8];
@@ -479,25 +544,65 @@ static void menu_manage_coop(struct UiContext *ctx) {
             char name[MAX_COOP_NAME];
             printf("Nhap ten chuong: ");
             if (read_line(name, sizeof(name)) != 0) break;
-            int idx = coop_add(&ctx->coop_list, name);
-            if (idx < 0) {
-                printf("Khong the them chuong (toi da %d).\n", MAX_COOPS);
-            } else {
-                printf("Da them chuong '%s'.\n", name);
-                autopopulate_coop_devices(ctx, (size_t)idx);
+            if (name[0] == '\0' || strcmp(name, "0") == 0) {
+                printf("Da huy them chuong.\n");
+                break;
             }
+            int new_id = 0;
+            if (!ctx->ops.coop_add || ctx->ops.coop_add(ctx->ops.user_data, name, &new_id) != 0) {
+                printf("Khong the them chuong.\n");
+                break;
+            }
+            printf("Da them chuong [%d] '%s'.\n", new_id, name);
             break;
         }
-        case 2: {
+        case 2:
+            print_coops_with_connection(ctx);
+            break;
+        case 3: {
+            if (!ctx->ops.add_device) {
+                printf("Client chua ho tro dang ky thiet bi.\n");
+                break;
+            }
             size_t idx = 0;
             if (select_coop_index(&ctx->coop_list, &idx) != 0) break;
-            autopopulate_coop_devices(ctx, idx);
-            printf("Da dong bo toan bo thiet bi vao chuong %zu.\n", idx + 1);
+            const struct Coop *c = &ctx->coop_list.coops[idx];
+            if (c->id <= 0) {
+                printf("Chuong khong hop le.\n");
+                break;
+            }
+
+            char dev_id[MAX_ID_LEN];
+            char type_str[MAX_TYPE_LEN];
+            char pw[MAX_PASSWORD_LEN];
+
+            printf("Nhap ID thiet bi (vd FAN2): ");
+            if (read_line(dev_id, sizeof(dev_id)) != 0 || dev_id[0] == '\0') {
+                printf("ID khong hop le.\n");
+                break;
+            }
+            printf("Nhap loai thiet bi (sensor/fan/heater/sprayer/feeder/drinker/egg_counter): ");
+            if (read_line(type_str, sizeof(type_str)) != 0) break;
+            enum DeviceType type = device_type_from_string(type_str);
+            if (type == DEVICE_UNKNOWN) {
+                printf("Loai thiet bi khong hop le.\n");
+                break;
+            }
+            printf("Nhap mat khau (de trong = 123456): ");
+            if (read_line(pw, sizeof(pw)) != 0) break;
+            if (pw[0] == '\0') {
+                strncpy(pw, "123456", sizeof(pw) - 1);
+                pw[sizeof(pw) - 1] = '\0';
+            }
+
+            if (ctx->ops.add_device(ctx->ops.user_data, dev_id, type, pw, c->id) != 0) {
+                printf("Dang ky that bai (co the trung ID hoac chuong khong ton tai).\n");
+                break;
+            }
+            refresh_coops(ctx);
+            printf("Da dang ky %s (%s) vao chuong %s.\n", dev_id, device_type_to_string(type), c->name);
             break;
         }
-        case 3:
-            coop_print(&ctx->coop_list);
-            break;
         case 0:
             back = 1;
             break;

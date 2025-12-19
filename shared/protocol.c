@@ -21,7 +21,12 @@ static const struct command_entry COMMAND_TABLE[] = {
     { "CHPASS", CMD_CHPASS },
     { "BYE", CMD_BYE },
     { "ADD", CMD_ADD_DEVICE },
-    { "ADDDEVICE", CMD_ADD_DEVICE }
+    { "ADDDEVICE", CMD_ADD_DEVICE },
+    { "ASSIGN", CMD_ASSIGN_DEVICE },
+    { "SETCOOP", CMD_ASSIGN_DEVICE },
+    { "COOPLIST", CMD_COOP_LIST },
+    { "COOP_ADD", CMD_COOP_ADD },
+    { "COOPADD", CMD_COOP_ADD }
 };
 
 enum CommandType protocol_command_from_string(const char *word) {
@@ -48,6 +53,9 @@ const char *protocol_command_to_string(enum CommandType cmd) {
     case CMD_CHPASS: return "CHPASS";
     case CMD_BYE: return "BYE";
     case CMD_ADD_DEVICE: return "ADD";
+    case CMD_ASSIGN_DEVICE: return "ASSIGN";
+    case CMD_COOP_LIST: return "COOPLIST";
+    case CMD_COOP_ADD: return "COOPADD";
     default: return "UNKNOWN";
     }
 }
@@ -81,6 +89,18 @@ int protocol_format_device(char *out, size_t len, const char *id, enum DeviceTyp
     }
     char payload[MAX_LINE_LEN];
     int written = snprintf(payload, sizeof(payload), "DEVICE %s %s", id, device_type_to_string(type));
+    if (written < 0 || (size_t)written >= sizeof(payload)) {
+        return -1;
+    }
+    return protocol_format_line(out, len, RESP_DEVICE, payload, NULL);
+}
+
+int protocol_format_device_ex(char *out, size_t len, const char *id, enum DeviceType type, int coop_id) {
+    if (!id) {
+        return -1;
+    }
+    char payload[MAX_LINE_LEN];
+    int written = snprintf(payload, sizeof(payload), "DEVICE %s %s %d", id, device_type_to_string(type), coop_id);
     if (written < 0 || (size_t)written >= sizeof(payload)) {
         return -1;
     }
@@ -125,6 +145,29 @@ int protocol_format_bye_ok(char *out, size_t len) {
 
 int protocol_format_add_ok(char *out, size_t len) {
     return protocol_format_line(out, len, RESP_ADD_OK, "ADD_OK", NULL);
+}
+
+int protocol_format_assign_ok(char *out, size_t len) {
+    return protocol_format_line(out, len, RESP_ASSIGN_OK, "ASSIGN_OK", NULL);
+}
+
+int protocol_format_coop(char *out, size_t len, int coop_id, const char *name) {
+    if (!name) return -1;
+    char payload[MAX_LINE_LEN];
+    int written = snprintf(payload, sizeof(payload), "COOP %d %s", coop_id, name);
+    if (written < 0 || (size_t)written >= sizeof(payload)) return -1;
+    return protocol_format_line(out, len, RESP_COOP, payload, NULL);
+}
+
+int protocol_format_coopadd_ok(char *out, size_t len, int coop_id) {
+    char payload[32];
+    int written = snprintf(payload, sizeof(payload), "%d", coop_id);
+    if (written < 0 || (size_t)written >= sizeof(payload)) return -1;
+    return protocol_format_line(out, len, RESP_COOPADD_OK, "COOPADD_OK", payload);
+}
+
+int protocol_format_no_coop(char *out, size_t len) {
+    return protocol_format_line(out, len, RESP_NO_COOP, "NO_COOP", NULL);
 }
 
 int protocol_format_not_connected(char *out, size_t len) {

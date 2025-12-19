@@ -13,6 +13,7 @@ struct CoopDevice {
 };
 
 struct Coop {
+    int id;
     char name[MAX_COOP_NAME];
     struct CoopDevice devices[MAX_DEVICES];
     size_t device_count;

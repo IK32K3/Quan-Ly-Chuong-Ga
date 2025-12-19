@@ -29,6 +29,7 @@ enum DeviceStatus {
 struct DeviceIdentity {
     char id[MAX_ID_LEN];
     enum DeviceType type;
+    int coop_id; /* 0 = chua gan chuong */
 };
 
 // Extended device information (optional)

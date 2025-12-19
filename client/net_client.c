@@ -33,12 +33,20 @@ int client_send_line(int fd, const char *line) {
 }
 
 int client_recv_line(int fd, char *buffer, size_t len) {
-    ssize_t n = read(fd, buffer, len - 1);
-    if (n <= 0) return -1;
-    buffer[n] = '\0';
-    // Loại bỏ \n nếu có
-    char *end = strchr(buffer, '\n');
-    if (end) *end = '\0';
+    if (!buffer || len == 0) return -1;
+    size_t pos = 0;
+    while (pos + 1 < len) {
+        char c = '\0';
+        ssize_t n = read(fd, &c, 1);
+        if (n <= 0) {
+            return -1;
+        }
+        if (c == '\n') {
+            break;
+        }
+        buffer[pos++] = c;
+    }
+    buffer[pos] = '\0';
     return 0;
 }
 

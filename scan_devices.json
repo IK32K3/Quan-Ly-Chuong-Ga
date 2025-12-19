@@ -1,0 +1,14 @@
+[
+  {
+    "id": "FAN_OUT1",
+    "type": "fan",
+    "password": "123456",
+    "coop_id": 0
+  },
+  {
+    "id": "DRINK_OUT1",
+    "type": "drinker",
+    "password": "123456",
+    "coop_id": 0
+  }
+]

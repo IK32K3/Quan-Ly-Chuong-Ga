@@ -114,6 +114,9 @@ int devices_set_config_drinker(struct Device *dev, double Vw, const struct Sched
 int devices_info_json(const struct Device *dev, char *out_json, size_t out_len);
 
 /* Them thiet bi moi voi cau hinh mac dinh theo type */
-int devices_add(struct DevicesContext *ctx, const char *id, enum DeviceType type, const char *password);
+int devices_add(struct DevicesContext *ctx, const char *id, enum DeviceType type, const char *password, int coop_id);
+
+/* Tao thiet bi voi thong so mac dinh theo type (phuc vu load file scan/devices). */
+void devices_init_default_device(struct Device *dev, enum DeviceType type, const char *id, const char *password);
 
 #endif /* SERVER_DEVICES_H */

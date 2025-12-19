@@ -18,6 +18,13 @@ int server_init(int port, int backlog) {
         return -1;
     }
 
+    int yes = 1;
+    if (setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes)) < 0) {
+        perror("setsockopt(SO_REUSEADDR)");
+        close(server_fd);
+        return -1;
+    }
+
     struct sockaddr_in addr = {0};
     addr.sin_family = AF_INET;
     addr.sin_addr.s_addr = INADDR_ANY;
@@ -39,9 +46,10 @@ int server_init(int port, int backlog) {
 }
 
 void server_run(int server_fd) {
-    struct pollfd fds[MAX_DEVICES + 1];  // +1 cho server_fd
+    /* fds[0] = server_fd, fds[i+1] <-> clients[i] */
+    struct pollfd fds[MAX_DEVICES + 1];
     struct ClientConnection clients[MAX_DEVICES];
-    int nfds = 1;
+    int nfds = MAX_DEVICES + 1;
 
     fds[0].fd = server_fd;
     fds[0].events = POLLIN;
@@ -49,6 +57,8 @@ void server_run(int server_fd) {
     for (int i = 0; i < MAX_DEVICES; ++i) {
         clients[i].fd = -1;
         clients[i].buf_pos = 0;
+        fds[i + 1].fd = -1;          /* poll bo qua fd am */
+        fds[i + 1].events = POLLIN;  /* dung chung */
     }
 
     while (1) {
@@ -69,9 +79,8 @@ void server_run(int server_fd) {
                     if (clients[i].fd == -1) {
                         clients[i].fd = client_fd;
                         clients[i].buf_pos = 0;
-                        fds[nfds].fd = client_fd;
-                        fds[nfds].events = POLLIN;
-                        nfds++;
+                        fds[i + 1].fd = client_fd;
+                        fds[i + 1].events = POLLIN;
                         // Gửi READY
                         char ready_line[MAX_LINE_LEN];
                         protocol_format_ready(ready_line, sizeof(ready_line));
@@ -82,10 +91,13 @@ void server_run(int server_fd) {
             }
         }
 
-        // Xử lý client fds
-        for (int i = 1; i < nfds; ++i) {
-            if (fds[i].revents & POLLIN) {
-                handle_client_line(&clients[i - 1]);
+        // Xử lý client fds (fds[i+1] <-> clients[i])
+        for (int i = 0; i < MAX_DEVICES; ++i) {
+            if (fds[i + 1].fd < 0) {
+                continue;
+            }
+            if (fds[i + 1].revents & (POLLIN | POLLHUP | POLLERR)) {
+                handle_client_line(&clients[i], &fds[i + 1]);
             }
         }
     }
@@ -99,13 +111,35 @@ int send_line(int fd, const char *line) {
     return write(fd, "\n", 1) != 1 ? -1 : 0;
 }
 
-void handle_client_line(struct ClientConnection *conn) {
+static void parse_cmd_line(char *line, char **cmd_out, char **args_out) {
+    *cmd_out = NULL;
+    *args_out = NULL;
+    if (!line) return;
+    while (*line == ' ') line++;
+    if (*line == '\0') return;
+    char *space = strchr(line, ' ');
+    if (!space) {
+        *cmd_out = line;
+        return;
+    }
+    *space = '\0';
+    *cmd_out = line;
+    char *args = space + 1;
+    while (*args == ' ') args++;
+    *args_out = (*args == '\0') ? NULL : args;
+}
+
+void handle_client_line(struct ClientConnection *conn, struct pollfd *pfd) {
     char *line_end;
     ssize_t n = read(conn->fd, conn->buffer + conn->buf_pos, MAX_LINE_LEN - conn->buf_pos - 1);
     if (n <= 0) {
         // Client disconnect
         close(conn->fd);
         conn->fd = -1;
+        if (pfd) {
+            pfd->fd = -1;
+            pfd->revents = 0;
+        }
         return;
     }
     conn->buf_pos += n;
@@ -113,17 +147,18 @@ void handle_client_line(struct ClientConnection *conn) {
 
     while ((line_end = strchr(conn->buffer, '\n'))) {
         *line_end = '\0';
-        // Parse lệnh (giả định format: CMD args)
-        char *cmd_str = strtok(conn->buffer, " ");
+        // Parse lệnh (format: CMD [args...])
+        char *cmd_str = NULL;
+        char *args = NULL;
+        parse_cmd_line(conn->buffer, &cmd_str, &args);
         enum CommandType cmd = protocol_command_from_string(cmd_str);
-        char *args = strtok(NULL, "");  // Phần còn lại là args
         if (cmd != CMD_UNKNOWN) {
             // Gọi handle_command từ B và gửi response
             char *response = handle_command(conn->fd, cmd, args);
             if (response) {
                 send_line(conn->fd, response);
                 free(response);  // Giả định B allocate với malloc
-            } else {
+            } else if (cmd != CMD_SCAN && cmd != CMD_COOP_LIST) {
                 char bad_req[MAX_LINE_LEN];
                 protocol_format_bad_request(bad_req, sizeof(bad_req));
                 send_line(conn->fd, bad_req);
