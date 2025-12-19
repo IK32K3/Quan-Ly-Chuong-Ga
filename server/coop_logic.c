@@ -11,12 +11,21 @@
 #include <stdlib.h>
 #include <string.h>
 
+/**
+ * @file coop_logic.c
+ * @brief Xử lý command từ client và thao tác trên dữ liệu chuồng/thiết bị.
+ *
+ * Module này giữ state trong bộ nhớ (g_coops/g_devices) và đồng bộ xuống file
+ * `farm_state.json` sau các thao tác thay đổi dữ liệu.
+ */
+
 /* Biến dùng chung cho B */
 static struct CoopsContext g_coops;
 static struct DevicesContext g_devices;
 
 static const char *FARM_STATE_PATH = "farm_state.json";
 
+/** @brief Nạp thêm dữ liệu farm từ đĩa và merge vào state hiện tại (không ghi đè device đã có). */
 static void merge_farm_from_disk(void) {
     struct CoopsContext file_coops;
     struct DevicesContext file_devices;
@@ -36,6 +45,7 @@ static void merge_farm_from_disk(void) {
     }
 }
 
+/** @brief Chuẩn hoá tên chuồng: nếu rỗng/"0" thì gán mặc định "Chuong <id>". */
 static void sanitize_coop_names(void) {
     for (size_t i = 0; i < g_coops.count; ++i) {
         if (g_coops.coops[i].name[0] == '\0' || strcmp(g_coops.coops[i].name, "0") == 0) {
@@ -55,6 +65,7 @@ void coop_logic_init(void) {
 }
 
 /* Tiện ích cấp phát response */
+/** @brief Cấp phát và copy một dòng response (caller phải `free()`). */
 static char *alloc_line(const char *src) {
     size_t len = strlen(src) + 1;
     char *buf = (char *)malloc(len);
@@ -65,22 +76,26 @@ static char *alloc_line(const char *src) {
 }
 
 /* Parse số thực đơn giản */
+/** @brief Parse 2 số thực theo format `fmt` từ payload JSON (dùng `sscanf`). */
 static int parse_two_doubles(const char *payload, const char *fmt, double *a, double *b) {
     if (!payload || !fmt || !a || !b) return 0;
     return sscanf(payload, fmt, a, b);
 }
 
+/** @brief Parse 1 số thực theo format `fmt` từ payload JSON (dùng `sscanf`). */
 static int parse_one_double(const char *payload, const char *fmt, double *out) {
     if (!payload || !fmt || !out) return 0;
     return sscanf(payload, fmt, out);
 }
 
+/** @brief Parse 3 số thực theo format `fmt` từ payload JSON (dùng `sscanf`). */
 static int parse_three_doubles(const char *payload, const char *fmt, double *a, double *b, double *c) {
     if (!payload || !fmt || !a || !b || !c) return 0;
     return sscanf(payload, fmt, a, b, c);
 }
 
 /* Gửi nhiều dòng cho SCAN */
+/** @brief Xử lý command SCAN: gửi 0..N dòng RESP_DEVICE trực tiếp về client. */
 static void handle_scan(int fd) {
     /* Neu user edit farm_state.json ben ngoai, SCAN se nap them cac thiet bi moi */
     merge_farm_from_disk();
@@ -100,6 +115,7 @@ static void handle_scan(int fd) {
     }
 }
 
+/** @brief Xử lý command COOPLIST: gửi 0..N dòng RESP_COOP trực tiếp về client. */
 static void handle_coop_list(int fd) {
     if (g_coops.count == 0) {
         char line[MAX_LINE_LEN];
@@ -114,6 +130,12 @@ static void handle_coop_list(int fd) {
     }
 }
 
+/**
+ * @brief Router xử lý command (dispatch theo `cmd`).
+ *
+ * Với các lệnh trả nhiều dòng (SCAN/COOPLIST), hàm sẽ tự gửi và trả NULL.
+ * Với các lệnh khác, hàm trả về 1 dòng response đã cấp phát (caller free).
+ */
 char *handle_command(int fd, enum CommandType cmd, char *args) {
     /* Lưu ý: net_server sẽ gửi response trả về; riêng SCAN tự gửi nhiều dòng và trả NULL */
     char line[MAX_LINE_LEN];
@@ -246,7 +268,7 @@ char *handle_command(int fd, enum CommandType cmd, char *args) {
             return alloc_line(line);
         }
         log_device_event(dev_id, action);
-        (void)storage_save_farm(&g_coops, &g_devices, "farm_state.json");
+        (void)storage_save_farm(&g_coops, &g_devices, FARM_STATE_PATH);
         protocol_format_control_ok(line, sizeof(line));
         return alloc_line(line);
     }

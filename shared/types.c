@@ -3,12 +3,17 @@
 #include <stddef.h>  // THÊM
 #include <string.h>  // THÊM cho strcmp nếu cần
 
+/**
+ * @file types.c
+ * @brief Hàm chuyển đổi/kiểm tra type và status dùng chung cho client/server.
+ */
+
 struct type_entry {
     const char *name;
     enum DeviceType type;
 };
 
-// Sắp xếp theo tên để dễ maintain
+/** @brief Bảng mapping từ string -> DeviceType (có alias). */
 static const struct type_entry TYPE_TABLE[] = {
     { "drinker", DEVICE_DRINKER },
     { "egg_counter", DEVICE_EGG_COUNTER },
@@ -22,6 +27,7 @@ static const struct type_entry TYPE_TABLE[] = {
 };
 static const size_t TYPE_TABLE_SIZE = sizeof(TYPE_TABLE) / sizeof(TYPE_TABLE[0]);
 
+/** @see device_type_to_string() */
 const char *device_type_to_string(enum DeviceType type) {
     switch (type) {
     case DEVICE_SENSOR: return "sensor";
@@ -35,6 +41,7 @@ const char *device_type_to_string(enum DeviceType type) {
     }
 }
 
+/** @see device_type_from_string() */
 enum DeviceType device_type_from_string(const char *type_str) {
     // Kiểm tra kỹ hơn
     if (!type_str || type_str[0] == '\0') {
@@ -51,26 +58,7 @@ enum DeviceType device_type_from_string(const char *type_str) {
     return DEVICE_UNKNOWN;
 }
 
-// Hàm helper mới - THÊM
-int device_type_is_valid(enum DeviceType type) {
-    return (type >= DEVICE_SENSOR && type <= DEVICE_SPRAYER);
-}
-
-// Hàm helper mới - THÊM
-const char *device_type_get_default_name(enum DeviceType type) {
-    // Trả về tên chính thức (không phải alias)
-    switch (type) {
-    case DEVICE_SENSOR: return "sensor";
-    case DEVICE_EGG_COUNTER: return "egg_counter";
-    case DEVICE_FEEDER: return "feeder";
-    case DEVICE_DRINKER: return "drinker";
-    case DEVICE_FAN: return "fan";
-    case DEVICE_HEATER: return "heater";
-    case DEVICE_SPRAYER: return "sprayer";
-    default: return NULL;
-    }
-}
-
+/** @see device_status_to_string() */
 const char *device_status_to_string(enum DeviceStatus status) {
     switch (status) {
     case STATUS_OFF: return "OFF";
@@ -81,6 +69,7 @@ const char *device_status_to_string(enum DeviceStatus status) {
     }
 }
 
+/** @see device_status_from_string() */
 enum DeviceStatus device_status_from_string(const char *status_str) {
     if (!status_str) return STATUS_ERROR;
     if (strcasecmp(status_str, "OFF") == 0) return STATUS_OFF;

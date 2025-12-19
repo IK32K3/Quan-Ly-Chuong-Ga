@@ -1,16 +1,19 @@
 #include "net_server.h"
-#include "session_auth.h"  // Cho session
-#include "monitor_log.h"   // Cho log
 #include <unistd.h>
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <errno.h>
 #include <poll.h>
 
 // Giả định handle_command từ B trả về char* (response) hoặc NULL
 extern char* handle_command(int fd, enum CommandType cmd, char *args);
 
+/**
+ * @file net_server.c
+ * @brief Vòng lặp network của server: accept, poll, đọc dòng và dispatch command.
+ */
+
+/** @see server_init() */
 int server_init(int port, int backlog) {
     int server_fd = socket(AF_INET, SOCK_STREAM, 0);
     if (server_fd < 0) {
@@ -45,6 +48,7 @@ int server_init(int port, int backlog) {
     return server_fd;
 }
 
+/** @see server_run() */
 void server_run(int server_fd) {
     /* fds[0] = server_fd, fds[i+1] <-> clients[i] */
     struct pollfd fds[MAX_DEVICES + 1];
@@ -103,6 +107,7 @@ void server_run(int server_fd) {
     }
 }
 
+/** @see send_line() */
 int send_line(int fd, const char *line) {
     size_t len = strlen(line);
     if (write(fd, line, len) != (ssize_t)len) {
@@ -111,6 +116,7 @@ int send_line(int fd, const char *line) {
     return write(fd, "\n", 1) != 1 ? -1 : 0;
 }
 
+/** @brief Tách dòng input thành `cmd` và `args` (sửa in-place bằng cách chèn `\0`). */
 static void parse_cmd_line(char *line, char **cmd_out, char **args_out) {
     *cmd_out = NULL;
     *args_out = NULL;
@@ -129,6 +135,7 @@ static void parse_cmd_line(char *line, char **cmd_out, char **args_out) {
     *args_out = (*args == '\0') ? NULL : args;
 }
 
+/** @see handle_client_line() */
 void handle_client_line(struct ClientConnection *conn, struct pollfd *pfd) {
     char *line_end;
     ssize_t n = read(conn->fd, conn->buffer + conn->buf_pos, MAX_LINE_LEN - conn->buf_pos - 1);

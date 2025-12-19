@@ -5,7 +5,7 @@
 
 static const char *find_matching_brace(const char *start);
 
-/* Helpers parse JSON don gian */
+/** @brief Tìm vị trí chuỗi khóa `"key"` trong JSON. */
 static const char *find_key(const char *json, const char *key) {
     if (!json || !key) return NULL;
     char pattern[64];
@@ -13,6 +13,7 @@ static const char *find_key(const char *json, const char *key) {
     return strstr(json, pattern);
 }
 
+/** @brief Lấy giá trị string cho `key`. */
 static int json_get_string(const char *json, const char *key, char *out, size_t out_len) {
     const char *p = find_key(json, key);
     if (!p) return -1;
@@ -30,6 +31,7 @@ static int json_get_string(const char *json, const char *key, char *out, size_t 
     return 0;
 }
 
+/** @brief Lấy giá trị số thực cho `key`. */
 static int json_get_double(const char *json, const char *key, double *out) {
     const char *p = find_key(json, key);
     if (!p) return -1;
@@ -43,6 +45,7 @@ static int json_get_double(const char *json, const char *key, double *out) {
     return -1;
 }
 
+/** @brief Lấy giá trị số nguyên cho `key`. */
 static int json_get_int(const char *json, const char *key, int *out) {
     double v = 0.0;
     if (json_get_double(json, key, &v) != 0) return -1;
@@ -50,6 +53,7 @@ static int json_get_int(const char *json, const char *key, int *out) {
     return 0;
 }
 
+/** @brief Parse object JSON `info` và fill vào `Device` (theo type). */
 static void parse_device_info(struct Device *dev, const char *info_json) {
     if (!dev || !info_json) return;
     char type[32];
@@ -116,6 +120,7 @@ static void parse_device_info(struct Device *dev, const char *info_json) {
     }
 }
 
+/** @brief Escape chuỗi (chỉ xử lý `"` và `\\`) để ghi JSON. */
 static void json_escape(const char *in, char *out, size_t out_len) {
     size_t pos = 0;
     for (size_t i = 0; in && in[i] && pos + 1 < out_len; ++i) {
@@ -130,6 +135,7 @@ static void json_escape(const char *in, char *out, size_t out_len) {
     out[pos] = '\0';
 }
 
+/** @see storage_save_devices() */
 int storage_save_devices(const struct DevicesContext *ctx, const char *path) {
     if (!ctx || !path) return -1;
     FILE *f = fopen(path, "w");
@@ -149,6 +155,7 @@ int storage_save_devices(const struct DevicesContext *ctx, const char *path) {
     return 0;
 }
 
+/** @see storage_load_devices() */
 int storage_load_devices(struct DevicesContext *ctx, const char *path) {
     if (!ctx || !path) return -1;
     FILE *f = fopen(path, "r");
@@ -242,6 +249,7 @@ int storage_load_devices(struct DevicesContext *ctx, const char *path) {
     return ctx->count > 0 ? 0 : -1;
 }
 
+/** @see storage_save_farm() */
 int storage_save_farm(const struct CoopsContext *coops, const struct DevicesContext *devices, const char *path) {
     if (!coops || !devices || !path) return -1;
     FILE *f = fopen(path, "w");
@@ -273,6 +281,7 @@ int storage_save_farm(const struct CoopsContext *coops, const struct DevicesCont
     return 0;
 }
 
+/** @brief Tìm dấu `}` khớp với `{` bắt đầu tại `start` . */
 static const char *find_matching_brace(const char *start) {
     int brace_count = 0;
     const char *p = start;

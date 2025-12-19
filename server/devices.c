@@ -4,10 +4,20 @@
 #include <string.h>
 #include <stdlib.h>
 
+/**
+ * @file devices.c
+ * @brief Quản lý danh sách thiết bị và thao tác (INFO/CONTROL/SETCFG).
+ *
+ * Các hàm trong file này chỉ mô phỏng hành vi thiết bị (in-memory), kèm kiểm
+ * tra ràng buộc đơn giản cho tham số cấu hình/hành động.
+ */
+
+/** @brief Kiểm tra số hữu hạn (cách đơn giản: NaN != NaN). */
 static int is_finite_number(double v) {
     return v == v;
 }
 
+/** @brief Kiểm tra số nằm trong [min, max] và không phải NaN. */
 static int in_range(double v, double min, double max) {
     return is_finite_number(v) && v >= min && v <= max;
 }
@@ -22,6 +32,7 @@ enum {
     LIMIT_WATER_MAX_L = 20
 };
 
+/** @brief Khởi tạo thiết bị cảm biến mặc định. */
 static void init_sensor(struct Device *dev, const char *id) {
     memset(dev, 0, sizeof(*dev));
     strncpy(dev->identity.id, id, sizeof(dev->identity.id) - 1);
@@ -33,6 +44,7 @@ static void init_sensor(struct Device *dev, const char *id) {
     strncpy(dev->data.sensor.unit_humidity, "%", sizeof(dev->data.sensor.unit_humidity) - 1);
 }
 
+/** @brief Khởi tạo thiết bị đếm trứng mặc định. */
 static void init_egg_counter(struct Device *dev, const char *id) {
     memset(dev, 0, sizeof(*dev));
     strncpy(dev->identity.id, id, sizeof(dev->identity.id) - 1);
@@ -41,6 +53,7 @@ static void init_egg_counter(struct Device *dev, const char *id) {
     dev->data.egg_counter.egg_count = 35;
 }
 
+/** @brief Khởi tạo thiết bị quạt mặc định. */
 static void init_fan(struct Device *dev, const char *id) {
     memset(dev, 0, sizeof(*dev));
     strncpy(dev->identity.id, id, sizeof(dev->identity.id) - 1);
@@ -52,6 +65,7 @@ static void init_fan(struct Device *dev, const char *id) {
     strncpy(dev->data.fan.unit_temp, "C", sizeof(dev->data.fan.unit_temp) - 1);
 }
 
+/** @brief Khởi tạo thiết bị đèn sưởi mặc định. */
 static void init_heater(struct Device *dev, const char *id) {
     memset(dev, 0, sizeof(*dev));
     strncpy(dev->identity.id, id, sizeof(dev->identity.id) - 1);
@@ -64,6 +78,7 @@ static void init_heater(struct Device *dev, const char *id) {
     strncpy(dev->data.heater.unit_temp, "C", sizeof(dev->data.heater.unit_temp) - 1);
 }
 
+/** @brief Khởi tạo thiết bị phun sương mặc định. */
 static void init_sprayer(struct Device *dev, const char *id) {
     memset(dev, 0, sizeof(*dev));
     strncpy(dev->identity.id, id, sizeof(dev->identity.id) - 1);
@@ -77,6 +92,7 @@ static void init_sprayer(struct Device *dev, const char *id) {
     strncpy(dev->data.sprayer.unit_flow, "L/h", sizeof(dev->data.sprayer.unit_flow) - 1);
 }
 
+/** @brief Khởi tạo thiết bị cho ăn mặc định (kèm lịch mẫu). */
 static void init_feeder(struct Device *dev, const char *id) {
     memset(dev, 0, sizeof(*dev));
     strncpy(dev->identity.id, id, sizeof(dev->identity.id) - 1);
@@ -96,6 +112,7 @@ static void init_feeder(struct Device *dev, const char *id) {
     dev->data.feeder.schedule[1].water = 0.6;
 }
 
+/** @brief Khởi tạo thiết bị cho uống mặc định (kèm lịch mẫu). */
 static void init_drinker(struct Device *dev, const char *id) {
     memset(dev, 0, sizeof(*dev));
     strncpy(dev->identity.id, id, sizeof(dev->identity.id) - 1);
@@ -111,6 +128,7 @@ static void init_drinker(struct Device *dev, const char *id) {
     dev->data.drinker.schedule[1].water = 0.5;
 }
 
+/** @see devices_context_init() */
 void devices_context_init(struct DevicesContext *ctx) {
     if (!ctx) {
         return;
@@ -146,6 +164,7 @@ void devices_context_init(struct DevicesContext *ctx) {
     }
 }
 
+/** @see devices_scan() */
 size_t devices_scan(const struct DevicesContext *ctx, struct DeviceIdentity *out, size_t max_out) {
     if (!ctx || !out || max_out == 0) {
         return 0;
@@ -157,6 +176,7 @@ size_t devices_scan(const struct DevicesContext *ctx, struct DeviceIdentity *out
     return copy;
 }
 
+/** @see devices_find() */
 struct Device *devices_find(struct DevicesContext *ctx, const char *id) {
     if (!ctx || !id) {
         return NULL;
@@ -169,10 +189,12 @@ struct Device *devices_find(struct DevicesContext *ctx, const char *id) {
     return NULL;
 }
 
+/** @see devices_find_const() */
 const struct Device *devices_find_const(const struct DevicesContext *ctx, const char *id) {
     return devices_find((struct DevicesContext *)ctx, id);
 }
 
+/** @see devices_change_password() */
 int devices_change_password(struct Device *dev, const char *old_pw, const char *new_pw) {
     if (!dev || !old_pw || !new_pw) {
         return -1;
@@ -185,6 +207,7 @@ int devices_change_password(struct Device *dev, const char *old_pw, const char *
     return 0;
 }
 
+/** @see devices_set_state() */
 int devices_set_state(struct Device *dev, enum DevicePowerState state) {
     if (!dev) {
         return -1;
@@ -213,6 +236,7 @@ int devices_set_state(struct Device *dev, enum DevicePowerState state) {
     }
 }
 
+/** @see devices_feed_now() */
 int devices_feed_now(struct Device *dev, double food, double water) {
     if (!dev || dev->identity.type != DEVICE_FEEDER) {
         return -1;
@@ -225,6 +249,7 @@ int devices_feed_now(struct Device *dev, double food, double water) {
     return 0;
 }
 
+/** @see devices_drink_now() */
 int devices_drink_now(struct Device *dev, double water) {
     if (!dev || dev->identity.type != DEVICE_DRINKER) {
         return -1;
@@ -236,6 +261,7 @@ int devices_drink_now(struct Device *dev, double water) {
     return 0;
 }
 
+/** @see devices_spray_now() */
 int devices_spray_now(struct Device *dev, double Vh) {
     if (!dev || dev->identity.type != DEVICE_SPRAYER) {
         return -1;
@@ -248,6 +274,7 @@ int devices_spray_now(struct Device *dev, double Vh) {
     return 0;
 }
 
+/** @see devices_set_config_fan() */
 int devices_set_config_fan(struct Device *dev, double Tmax, double Tp1) {
     if (!dev || dev->identity.type != DEVICE_FAN) {
         return -1;
@@ -262,6 +289,7 @@ int devices_set_config_fan(struct Device *dev, double Tmax, double Tp1) {
     return 0;
 }
 
+/** @see devices_set_config_heater() */
 int devices_set_config_heater(struct Device *dev, double Tmin, double Tp2, const char *mode) {
     if (!dev || dev->identity.type != DEVICE_HEATER) {
         return -1;
@@ -280,6 +308,7 @@ int devices_set_config_heater(struct Device *dev, double Tmin, double Tp2, const
     return 0;
 }
 
+/** @see devices_set_config_sprayer() */
 int devices_set_config_sprayer(struct Device *dev, double Hmin, double Hp, double Vh) {
     if (!dev || dev->identity.type != DEVICE_SPRAYER) {
         return -1;
@@ -296,10 +325,12 @@ int devices_set_config_sprayer(struct Device *dev, double Hmin, double Hp, doubl
     return 0;
 }
 
+/** @brief Giới hạn schedule_count không vượt `MAX_SCHEDULE_ENTRIES`. */
 static size_t clamp_schedule_count(size_t count) {
     return count > MAX_SCHEDULE_ENTRIES ? MAX_SCHEDULE_ENTRIES : count;
 }
 
+/** @see devices_set_config_feeder() */
 int devices_set_config_feeder(struct Device *dev, double W, double Vw, const struct ScheduleEntry *schedule, size_t schedule_count) {
     if (!dev || dev->identity.type != DEVICE_FEEDER) {
         return -1;
@@ -317,6 +348,7 @@ int devices_set_config_feeder(struct Device *dev, double W, double Vw, const str
     return 0;
 }
 
+/** @see devices_set_config_drinker() */
 int devices_set_config_drinker(struct Device *dev, double Vw, const struct ScheduleEntry *schedule, size_t schedule_count) {
     if (!dev || dev->identity.type != DEVICE_DRINKER) {
         return -1;
@@ -334,6 +366,7 @@ int devices_set_config_drinker(struct Device *dev, double Vw, const struct Sched
     return 0;
 }
 
+/** @see devices_info_json() */
 int devices_info_json(const struct Device *dev, char *out_json, size_t out_len) {
     if (!dev || !out_json || out_len == 0) {
         return -1;
@@ -459,6 +492,7 @@ int devices_info_json(const struct Device *dev, char *out_json, size_t out_len) 
     return 0;
 }
 
+/** @see devices_init_default_device() */
 void devices_init_default_device(struct Device *dev, enum DeviceType type, const char *id, const char *password) {
     switch (type) {
     case DEVICE_SENSOR:
@@ -495,6 +529,7 @@ void devices_init_default_device(struct Device *dev, enum DeviceType type, const
     }
 }
 
+/** @see devices_add() */
 int devices_add(struct DevicesContext *ctx, const char *id, enum DeviceType type, const char *password, int coop_id) {
     if (!ctx || !id || id[0] == '\0') {
         return -1;

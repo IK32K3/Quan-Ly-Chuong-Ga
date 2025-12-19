@@ -19,6 +19,7 @@ struct UiBackendOps {
     int (*coop_add)(void *user_data, const char *name, int *out_id);
 };
 
+/** @brief Trạng thái thiết bị phía client (token + đã kết nối hay chưa). */
 struct ClientDevice {
     char id[MAX_ID_LEN];
     char token[MAX_TOKEN_LEN];
@@ -26,6 +27,7 @@ struct ClientDevice {
     int connected;
 };
 
+/** @brief Context UI (ops backend + danh sách thiết bị + danh sách chuồng). */
 struct UiContext {
     struct UiBackendOps ops;
     struct ClientDevice devices[MAX_DEVICES];
@@ -33,7 +35,14 @@ struct UiContext {
     struct CoopList coop_list;
 };
 
+/**
+ * @brief Khởi tạo context UI.
+ */
 void ui_context_init(struct UiContext *ctx, const struct UiBackendOps *ops);
+
+/**
+ * @brief Chạy vòng lặp menu UI trên terminal.
+ */
 void ui_run(struct UiContext *ctx);
 
 #endif /* CLIENT_UI_CLIENT_H */

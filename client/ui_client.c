@@ -6,6 +6,12 @@
 
 /* Helpers cho UI: tra cuu, nhap lieu va parse JSON don gian */
 
+/**
+ * @file ui_client.c
+ * @brief UI dạng menu trên terminal cho client (gọi backend qua callback).
+ */
+
+/** @brief Tìm thiết bị trong context client theo ID. */
 static struct ClientDevice *find_client_device(struct UiContext *ctx, const char *id) {
     if (!ctx || !id) {
         return NULL;
@@ -18,6 +24,7 @@ static struct ClientDevice *find_client_device(struct UiContext *ctx, const char
     return NULL;
 }
 
+/** @brief In danh sách chuồng và chỉ hiển thị các thiết bị đã CONNECT. */
 static void print_coops_with_connection(const struct UiContext *ctx) {
     if (!ctx) return;
     printf("Danh sach chuong nuoi:\n");
@@ -40,6 +47,11 @@ static void print_coops_with_connection(const struct UiContext *ctx) {
     }
 }
 
+/**
+ * @brief Lấy (hoặc tạo) entry thiết bị trong danh sách client.
+ *
+ * Hàm không tự CONNECT; chỉ đảm bảo có slot để lưu token/trạng thái.
+ */
 static struct ClientDevice *ensure_client_device(struct UiContext *ctx, const char *id, enum DeviceType type) {
     struct ClientDevice *existing = find_client_device(ctx, id);
     if (existing) {
@@ -55,6 +67,7 @@ static struct ClientDevice *ensure_client_device(struct UiContext *ctx, const ch
     return d;
 }
 
+/** @brief Đọc một dòng từ stdin và loại bỏ ký tự xuống dòng. */
 static int read_line(char *buf, size_t len) {
     if (!fgets(buf, (int)len, stdin)) {
         return -1;
@@ -66,6 +79,7 @@ static int read_line(char *buf, size_t len) {
     return 0;
 }
 
+/** @brief Hỏi người dùng nhập số thực (double) theo prompt. */
 static int read_double(const char *prompt, double *out) {
     char line[64];
     printf("%s", prompt);
@@ -81,6 +95,7 @@ static int read_double(const char *prompt, double *out) {
     return 0;
 }
 
+/** @brief Kiểm tra type có hỗ trợ ON/OFF hay không. */
 static int device_supports_power(enum DeviceType type) {
     switch (type) {
     case DEVICE_FAN:
@@ -94,6 +109,7 @@ static int device_supports_power(enum DeviceType type) {
     }
 }
 
+/** @brief Cho người dùng chọn 1 chuồng trong `CoopList`. */
 static int select_coop_index(const struct CoopList *list, size_t *out_index) {
     if (list->count == 0) {
         printf("Chua co chuong nao. Hay them chuong truoc.\n");
@@ -118,6 +134,7 @@ static int select_coop_index(const struct CoopList *list, size_t *out_index) {
     return 0;
 }
 
+/** @brief Đồng bộ danh sách chuồng và gán thiết bị vào chuồng dựa trên kết quả SCAN. */
 static void refresh_coops(struct UiContext *ctx) {
     if (!ctx || !ctx->ops.coop_list || !ctx->ops.scan) return;
     if (ctx->ops.coop_list(ctx->ops.user_data, &ctx->coop_list) != 0) {
@@ -143,6 +160,7 @@ static void refresh_coops(struct UiContext *ctx) {
     }
 }
 
+/** @brief Chọn một thiết bị bất kỳ trong chuồng (có thể chưa CONNECT). */
 static int select_device_in_coop(const struct UiContext *ctx, size_t coop_index, char *out_id, size_t out_id_len, enum DeviceType *out_type) {
     if (!ctx || coop_index >= ctx->coop_list.count) return -1;
     const struct Coop *c = &ctx->coop_list.coops[coop_index];
@@ -177,6 +195,7 @@ static int select_device_in_coop(const struct UiContext *ctx, size_t coop_index,
     return 0;
 }
 
+/** @brief Chọn một thiết bị đã CONNECT trong chuồng. */
 static int select_connected_device_in_coop(const struct UiContext *ctx, size_t coop_index, char *out_id, size_t out_id_len, enum DeviceType *out_type) {
     if (!ctx || coop_index >= ctx->coop_list.count) return -1;
     const struct Coop *c = &ctx->coop_list.coops[coop_index];
@@ -220,6 +239,7 @@ static int select_connected_device_in_coop(const struct UiContext *ctx, size_t c
     return 0;
 }
 
+/** @brief Tìm vị trí chuỗi khóa `"key"` trong JSON (parser đơn giản). */
 static const char *find_key(const char *json, const char *key) {
     if (!json || !key) return NULL;
     char pattern[64];
@@ -227,6 +247,7 @@ static const char *find_key(const char *json, const char *key) {
     return strstr(json, pattern);
 }
 
+/** @brief Lấy giá trị string cho `key` trong JSON (dạng `"key":"value"`). */
 static int json_get_string(const char *json, const char *key, char *out, size_t out_len) {
     const char *p = find_key(json, key);
     if (!p) return -1;
@@ -244,6 +265,7 @@ static int json_get_string(const char *json, const char *key, char *out, size_t 
     return 0;
 }
 
+/** @brief Lấy giá trị double cho `key` trong JSON (dùng `sscanf`). */
 static int json_get_double(const char *json, const char *key, double *out) {
     const char *p = find_key(json, key);
     if (!p) return -1;
@@ -258,6 +280,7 @@ static int json_get_double(const char *json, const char *key, double *out) {
 }
 
 /* Hien thi thong tin thiet bi theo tung type*/
+/** @brief Hiển thị JSON INFO theo từng loại thiết bị. */
 static void display_info(const char *json) {
     /* Thu parse thong tin chi tiet theo type */
     char type[32];
@@ -337,6 +360,7 @@ static void display_info(const char *json) {
     }
 }
 
+/** @brief Menu: CONNECT thiết bị (chọn từ chuồng -> nhập mật khẩu). */
 static void menu_connect(struct UiContext *ctx) {
     refresh_coops(ctx);
     size_t coop_idx = 0;
@@ -369,6 +393,7 @@ static void menu_connect(struct UiContext *ctx) {
     printf("Ket noi %s thanh cong!\n", id);
 }
 
+/** @brief Yêu cầu thiết bị đã CONNECT trước khi thao tác cần token. */
 static const struct ClientDevice *require_connected(struct UiContext *ctx, const char *id) {
     struct ClientDevice *d = find_client_device(ctx, id);
     if (!d || !d->connected) {
@@ -379,6 +404,7 @@ static const struct ClientDevice *require_connected(struct UiContext *ctx, const
 }
 
 /* Menu xem thong tin: chi cho phep thiet bi da ket noi trong chuong */
+/** @brief Menu: INFO thiết bị đã CONNECT. */
 static void menu_info(struct UiContext *ctx) {
     refresh_coops(ctx);
     size_t coop_idx = 0;
@@ -404,6 +430,7 @@ static void menu_info(struct UiContext *ctx) {
 }
 
 /* Dieu khien thiet bi: ON/OFF hoac hanh dong truc tiep (feeder/drinker/sprayer) */
+/** @brief Menu: CONTROL thiết bị đã CONNECT (ON/OFF hoặc hành động trực tiếp). */
 static void menu_control(struct UiContext *ctx, int direct_mode) {
     refresh_coops(ctx);
     size_t coop_idx = 0;
@@ -459,6 +486,7 @@ static void menu_control(struct UiContext *ctx, int direct_mode) {
 }
 
 /* Thiet lap tham so theo tung loai thiet bi */
+/** @brief Menu: SETCFG thiết bị đã CONNECT (tuỳ theo type). */
 static void menu_setcfg(struct UiContext *ctx) {
     refresh_coops(ctx);
     size_t coop_idx = 0;
@@ -525,6 +553,7 @@ static void menu_setcfg(struct UiContext *ctx) {
 }
 
 /* Quan ly chuong: them chuong, dong bo thiet bi vao chuong */
+/** @brief Menu con: quản lý chuồng (thêm chuồng, xem danh sách, đăng ký thiết bị). */
 static void menu_manage_coop(struct UiContext *ctx) {
     if (!ctx) return;
     int back = 0;
@@ -613,6 +642,7 @@ static void menu_manage_coop(struct UiContext *ctx) {
     }
 }
 
+/** @see ui_context_init() */
 void ui_context_init(struct UiContext *ctx, const struct UiBackendOps *ops) {
     if (!ctx || !ops) {
         return;
@@ -623,6 +653,7 @@ void ui_context_init(struct UiContext *ctx, const struct UiBackendOps *ops) {
 }
 
 /* Vong lap menu chinh */
+/** @see ui_run() */
 void ui_run(struct UiContext *ctx) {
     if (!ctx) {
         return;

@@ -31,6 +31,7 @@ int coop_add(struct CoopList *list, const char *name) {
     return (int)(list->count - 1);
 }
 
+/** @brief Kiểm tra chuồng đã có thiết bị với ID này hay chưa. */
 static int device_exists(const struct Coop *c, const char *device_id) {
     for (size_t i = 0; i < c->device_count; ++i) {
         if (strncmp(c->devices[i].device_id, device_id, sizeof(c->devices[i].device_id)) == 0) {

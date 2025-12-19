@@ -6,6 +6,15 @@
 
 static struct Session sessions[MAX_DEVICES];
 
+/**
+ * @file session_auth.c
+ * @brief Quản lý session token cho thiết bị sau khi CONNECT.
+ *
+ * Lưu ý: triển khai hiện tại dùng `rand()` và gọi `srand(time(NULL))` trong
+ * `generate_token()`, phù hợp demo nhưng không phải mã an toàn cho production.
+ */
+
+/** @see generate_token() */
 void generate_token(char *token, size_t len) {
     const char charset[] = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
     srand(time(NULL));
@@ -15,6 +24,7 @@ void generate_token(char *token, size_t len) {
     token[len - 1] = '\0';
 }
 
+/** @see create_session() */
 int create_session(const char *device_id, char *token_out) {
     for (int i = 0; i < MAX_DEVICES; ++i) {
         if (!sessions[i].active) {
@@ -29,6 +39,7 @@ int create_session(const char *device_id, char *token_out) {
     return -1;  // No slot
 }
 
+/** @see validate_session() */
 int validate_session(const char *token, char *device_id_out) {
     for (int i = 0; i < MAX_DEVICES; ++i) {
         if (sessions[i].active && strcmp(sessions[i].token, token) == 0) {
@@ -39,6 +50,7 @@ int validate_session(const char *token, char *device_id_out) {
     return -1;
 }
 
+/** @see end_session() */
 void end_session(const char *token) {
     for (int i = 0; i < MAX_DEVICES; ++i) {
         if (sessions[i].active && strcmp(sessions[i].token, token) == 0) {

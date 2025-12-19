@@ -2,6 +2,12 @@
 #include <stdio.h>
 #include <time.h>
 
+/**
+ * @file monitor_log.c
+ * @brief Ghi log sự kiện thiết bị ra file.
+ */
+
+/** @see log_device_event() */
 void log_device_event(const char *device_id, const char *message) {
     FILE *log_file = fopen("device_log.txt", "a");
     if (!log_file) return;

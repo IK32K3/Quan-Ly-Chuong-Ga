@@ -6,6 +6,7 @@
 #include <arpa/inet.h>
 #include <poll.h>
 
+
 int client_connect(const char *host, int port) {
     int fd = socket(AF_INET, SOCK_STREAM, 0);
     if (fd < 0) return -1;

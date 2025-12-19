@@ -10,6 +10,12 @@ struct NetBackend {
     int fd;
 };
 
+/**
+ * @file main_client.c
+ * @brief Entry point client: hiện menu UI và giao tiếp server qua TCP.
+ */
+
+/** @brief Parse 1 dòng response theo format: "<code> <text> [payload...]". */
 static int parse_response(const char *line, int *code, char *text, size_t text_len, char *payload, size_t payload_len) {
     (void)payload_len;
     if (!line || !code || !text || text_len == 0) return -1;
@@ -23,6 +29,7 @@ static int parse_response(const char *line, int *code, char *text, size_t text_l
     return 0;
 }
 
+/** @brief Backend UI: SCAN (đọc nhiều dòng RESP_DEVICE cho tới khi timeout). */
 static int backend_scan(void *user_data, struct DeviceIdentity *out, size_t max_out, size_t *found) {
     struct NetBackend *b = (struct NetBackend *)user_data;
     *found = 0;
@@ -68,6 +75,7 @@ static int backend_scan(void *user_data, struct DeviceIdentity *out, size_t max_
     return 0;
 }
 
+/** @brief Backend UI: CONNECT (lấy token). */
 static int backend_connect(void *user_data, const char *device_id, const char *password, char *out_token, size_t token_len, enum DeviceType *out_type) {
     struct NetBackend *b = (struct NetBackend *)user_data;
     char line[MAX_LINE_LEN];
@@ -83,6 +91,7 @@ static int backend_connect(void *user_data, const char *device_id, const char *p
     return 0;
 }
 
+/** @brief Backend UI: INFO (lấy JSON). */
 static int backend_info(void *user_data, const char *device_id, const char *token, char *out_json, size_t json_len) {
     struct NetBackend *b = (struct NetBackend *)user_data;
     char line[MAX_LINE_LEN];
@@ -97,6 +106,7 @@ static int backend_info(void *user_data, const char *device_id, const char *toke
     return 0;
 }
 
+/** @brief Backend UI: CONTROL (ON/OFF/FEED_NOW/...). */
 static int backend_control(void *user_data, const char *device_id, const char *token, const char *action, const char *payload) {
     struct NetBackend *b = (struct NetBackend *)user_data;
     char line[MAX_LINE_LEN];
@@ -112,6 +122,7 @@ static int backend_control(void *user_data, const char *device_id, const char *t
     return code == RESP_CONTROL_OK ? 0 : -1;
 }
 
+/** @brief Backend UI: SETCFG (gửi JSON config). */
 static int backend_setcfg(void *user_data, const char *device_id, const char *token, const char *json_payload) {
     struct NetBackend *b = (struct NetBackend *)user_data;
     char line[MAX_LINE_LEN];
@@ -123,6 +134,7 @@ static int backend_setcfg(void *user_data, const char *device_id, const char *to
     return code == RESP_SETCFG_OK ? 0 : -1;
 }
 
+/** @brief Backend UI: ADD device mới (đăng ký vào coop). */
 static int backend_add_device(void *user_data, const char *device_id, enum DeviceType type, const char *password, int coop_id) {
     struct NetBackend *b = (struct NetBackend *)user_data;
     if (!device_id || device_id[0] == '\0') return -1;
@@ -138,6 +150,7 @@ static int backend_add_device(void *user_data, const char *device_id, enum Devic
     return code == RESP_ADD_OK ? 0 : -1;
 }
 
+/** @brief Backend UI: ASSIGN thiết bị sang coop khác. */
 static int backend_assign(void *user_data, const char *device_id, int coop_id) {
     struct NetBackend *b = (struct NetBackend *)user_data;
     char line[MAX_LINE_LEN];
@@ -149,6 +162,7 @@ static int backend_assign(void *user_data, const char *device_id, int coop_id) {
     return code == RESP_ASSIGN_OK ? 0 : -1;
 }
 
+/** @brief Backend UI: COOPLIST (đọc nhiều dòng RESP_COOP cho tới khi timeout). */
 static int backend_coop_list(void *user_data, struct CoopList *out) {
     struct NetBackend *b = (struct NetBackend *)user_data;
     if (!out) return -1;
@@ -190,6 +204,7 @@ static int backend_coop_list(void *user_data, struct CoopList *out) {
     return 0;
 }
 
+/** @brief Backend UI: COOPADD (thêm chuồng mới). */
 static int backend_coop_add(void *user_data, const char *name, int *out_id) {
     struct NetBackend *b = (struct NetBackend *)user_data;
     if (!name || name[0] == '\0') return -1;
@@ -206,6 +221,7 @@ static int backend_coop_add(void *user_data, const char *name, int *out_id) {
     return 0;
 }
 
+/** @brief Đọc input từ stdin với prompt và hỗ trợ default nếu người dùng bỏ trống. */
 static void read_input_line(const char *prompt, char *out, size_t out_len, const char *default_val) {
     printf("%s", prompt);
     if (fgets(out, (int)out_len, stdin)) {
@@ -221,6 +237,7 @@ static void read_input_line(const char *prompt, char *out, size_t out_len, const
     }
 }
 
+/** @brief Entry point client: parse ip/port, kết nối server và chạy UI. */
 int main(int argc, char **argv) {
     /* Ho tro: ./client_app <ip> <port> */
     char host[64] = "127.0.0.1";

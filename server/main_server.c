@@ -3,6 +3,7 @@
 #include "coop_logic.h"
 #include "../shared/config.h"
 
+/** @brief Entry point của server: init dữ liệu và chạy vòng lặp network. */
 int main(void) {
     coop_logic_init();
 
