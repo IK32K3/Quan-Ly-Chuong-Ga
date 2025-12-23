@@ -24,9 +24,6 @@ struct CoopsContext {
 /** @brief Khởi tạo context chuồng (reset danh sách, set `next_id`). */
 void coops_init(struct CoopsContext *ctx);
 
-/** @brief Khởi tạo dữ liệu chuồng mặc định (tối thiểu có "Chuong 1"). */
-void coops_init_default(struct CoopsContext *ctx);
-
 /**
  * @brief Tìm chuồng theo ID.
  * @return Con trỏ `CoopMeta` nếu tìm thấy, NULL nếu không có.

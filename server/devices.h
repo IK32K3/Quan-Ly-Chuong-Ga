@@ -120,12 +120,6 @@ size_t devices_scan(const struct DevicesContext *ctx, struct DeviceIdentity *out
 struct Device *devices_find(struct DevicesContext *ctx, const char *id);
 
 /**
- * @brief Tìm thiết bị theo ID (bản const).
- * @return Con trỏ tới thiết bị nếu tìm thấy, NULL nếu không có.
- */
-const struct Device *devices_find_const(const struct DevicesContext *ctx, const char *id);
-
-/**
  * @brief Đổi mật khẩu thiết bị.
  * @return 0 nếu thành công, -2 nếu sai mật khẩu cũ, giá trị âm khác nếu lỗi.
  */

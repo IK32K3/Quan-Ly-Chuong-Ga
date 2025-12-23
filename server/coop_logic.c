@@ -48,9 +48,8 @@ static void sanitize_coop_names(void) {
 void coop_logic_init(void) {
     /* Thu tai tu file farm_state.json, neu khong co thi khoi tao mac dinh */
     if (storage_load_farm(&g_coops, &g_devices, FARM_STATE_PATH) != 0) {
-        coops_init_default(&g_coops);
+        coops_init(&g_coops);
         devices_context_init(&g_devices);
-        (void)storage_save_farm(&g_coops, &g_devices, FARM_STATE_PATH);
     }
     sanitize_coop_names();
 }
@@ -183,7 +182,7 @@ char *handle_command(int fd, enum CommandType cmd, char *args) {
             protocol_format_not_connected(line, sizeof(line));
             return alloc_line(line);
         }
-        const struct Device *dev = devices_find_const(&g_devices, dev_id);
+        const struct Device *dev = devices_find(&g_devices, dev_id);
         if (!dev) {
             protocol_format_no_device_err(line, sizeof(line));
             return alloc_line(line);

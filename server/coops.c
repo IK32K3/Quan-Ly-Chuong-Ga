@@ -3,24 +3,15 @@
 #include <string.h>
 
 /**
- * @file coops.c
  * @brief Quản lý danh sách chuồng (thêm/tìm/cập nhật) phía server.
  */
 
-/** @see coops_init() */
 void coops_init(struct CoopsContext *ctx) {
     if (!ctx) return;
     memset(ctx, 0, sizeof(*ctx));
     ctx->next_id = 1;
 }
 
-/** @see coops_init_default() */
-void coops_init_default(struct CoopsContext *ctx) {
-    coops_init(ctx);
-    (void)coops_upsert(ctx, 1, "Chuong 1");
-}
-
-/** @see coops_find() */
 const struct CoopMeta *coops_find(const struct CoopsContext *ctx, int id) {
     if (!ctx) return NULL;
     for (size_t i = 0; i < ctx->count; ++i) {
@@ -29,7 +20,6 @@ const struct CoopMeta *coops_find(const struct CoopsContext *ctx, int id) {
     return NULL;
 }
 
-/** @see coops_upsert() */
 int coops_upsert(struct CoopsContext *ctx, int id, const char *name) {
     if (!ctx || id <= 0 || !name || name[0] == '\0') return -1;
     for (size_t i = 0; i < ctx->count; ++i) {
@@ -50,7 +40,6 @@ int coops_upsert(struct CoopsContext *ctx, int id, const char *name) {
     return 0;
 }
 
-/** @see coops_add() */
 int coops_add(struct CoopsContext *ctx, const char *name, int *out_id) {
     if (!ctx || !name || name[0] == '\0') return -1;
     if (ctx->count >= MAX_COOPS) return -2;
