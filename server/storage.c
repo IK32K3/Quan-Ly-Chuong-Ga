@@ -3,6 +3,11 @@
 
 #include <stdio.h>
 #include <string.h>
+<<<<<<< HEAD
+=======
+#include <strings.h>
+#include <stdlib.h>
+>>>>>>> dbc7dfc (Json update)
 
 static void copy_string(char *dst, size_t dst_len, const char *src) {
     if (!dst || dst_len == 0) return;
@@ -102,6 +107,7 @@ static int parse_device_info_object(struct Device *dev, json_t *info) {
         if (json_is_string(uh)) copy_string(dev->data.sensor.unit_humidity, sizeof(dev->data.sensor.unit_humidity), json_string_value(uh));
         break;
     }
+<<<<<<< HEAD
     case DEVICE_EGG_COUNTER: {
         json_t *eggs = json_object_get(info, "egg_count");
         if (json_is_integer(eggs)) dev->data.egg_counter.egg_count = (int)json_integer_value(eggs);
@@ -151,6 +157,75 @@ static int parse_device_info_object(struct Device *dev, json_t *info) {
 
         json_t *state = json_object_get(info, "state");
         dev->data.sprayer.state = parse_state_or_default(json_is_string(state) ? json_string_value(state) : NULL, DEVICE_OFF);
+=======
+    case DEVICE_FAN:
+        json_get_double(info_json, "nhiet_do_bat_c", &dev->data.fan.Tmax);
+        json_get_double(info_json, "nhiet_do_tat_c", &dev->data.fan.Tp1);
+        json_get_string(info_json, "unit_temp", dev->data.fan.unit_temp, sizeof(dev->data.fan.unit_temp));
+        {
+            char state[8] = {0};
+            if (json_get_string(info_json, "state", state, sizeof(state)) == 0 && strcasecmp(state, "ON") == 0) {
+                dev->data.fan.state = DEVICE_ON;
+            } else {
+                dev->data.fan.state = DEVICE_OFF;
+            }
+        }
+        break;
+    case DEVICE_HEATER:
+        json_get_double(info_json, "nhiet_do_bat_c", &dev->data.heater.Tmin);
+        json_get_double(info_json, "nhiet_do_tat_c", &dev->data.heater.Tp2);
+        json_get_string(info_json, "mode", dev->data.heater.mode, sizeof(dev->data.heater.mode));
+        json_get_string(info_json, "unit_temp", dev->data.heater.unit_temp, sizeof(dev->data.heater.unit_temp));
+        {
+            char state[8] = {0};
+            if (json_get_string(info_json, "state", state, sizeof(state)) == 0 && strcasecmp(state, "ON") == 0) {
+                dev->data.heater.state = DEVICE_ON;
+            } else {
+                dev->data.heater.state = DEVICE_OFF;
+            }
+        }
+        break;
+    case DEVICE_SPRAYER:
+        json_get_double(info_json, "do_am_bat_pct", &dev->data.sprayer.Hmin);
+        json_get_double(info_json, "do_am_muc_tieu_pct", &dev->data.sprayer.Hp);
+        json_get_double(info_json, "luu_luong_lph", &dev->data.sprayer.Vh);
+        json_get_string(info_json, "unit_humidity", dev->data.sprayer.unit_humidity, sizeof(dev->data.sprayer.unit_humidity));
+        json_get_string(info_json, "unit_flow", dev->data.sprayer.unit_flow, sizeof(dev->data.sprayer.unit_flow));
+        {
+            char state[8] = {0};
+            if (json_get_string(info_json, "state", state, sizeof(state)) == 0 && strcasecmp(state, "ON") == 0) {
+                dev->data.sprayer.state = DEVICE_ON;
+            } else {
+                dev->data.sprayer.state = DEVICE_OFF;
+            }
+        }
+        break;
+    case DEVICE_FEEDER:
+        json_get_double(info_json, "thuc_an_kg", &dev->data.feeder.W);
+        json_get_double(info_json, "nuoc_l", &dev->data.feeder.Vw);
+        json_get_string(info_json, "unit_food", dev->data.feeder.unit_food, sizeof(dev->data.feeder.unit_food));
+        json_get_string(info_json, "unit_water", dev->data.feeder.unit_water, sizeof(dev->data.feeder.unit_water));
+        {
+            char state[8] = {0};
+            if (json_get_string(info_json, "state", state, sizeof(state)) == 0 && strcasecmp(state, "ON") == 0) {
+                dev->data.feeder.state = DEVICE_ON;
+            } else {
+                dev->data.feeder.state = DEVICE_OFF;
+            }
+        }
+        break;
+    case DEVICE_DRINKER:
+        json_get_double(info_json, "nuoc_l", &dev->data.drinker.Vw);
+        json_get_string(info_json, "unit_water", dev->data.drinker.unit_water, sizeof(dev->data.drinker.unit_water));
+        {
+            char state[8] = {0};
+            if (json_get_string(info_json, "state", state, sizeof(state)) == 0 && strcasecmp(state, "ON") == 0) {
+                dev->data.drinker.state = DEVICE_ON;
+            } else {
+                dev->data.drinker.state = DEVICE_OFF;
+            }
+        }
+>>>>>>> dbc7dfc (Json update)
         break;
     }
     case DEVICE_FEEDER: {

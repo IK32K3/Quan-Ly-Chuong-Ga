@@ -245,32 +245,47 @@ char *handle_command(int fd, enum CommandType cmd, char *args) {
         } else if (strcmp(action, "OFF") == 0) {
             rc = devices_set_state(dev, DEVICE_OFF);
         } else if (strcmp(action, "FEED_NOW") == 0 && dev->identity.type == DEVICE_FEEDER) {
+<<<<<<< HEAD
             json_t *payload = parse_payload_object(rest);
             double food = 0.0, water = 0.0;
             if (!payload ||
                 require_number(payload, "thuc_an_kg", &food) != 0 ||
                 require_number(payload, "nuoc_l", &water) != 0) {
                 if (payload) json_decref(payload);
+=======
+            double food = dev->data.feeder.W, water = dev->data.feeder.Vw;
+            if (parse_two_doubles(rest, "{\"thuc_an_kg\":%lf,\"nuoc_l\":%lf}", &food, &water) < 2) {
+>>>>>>> dbc7dfc (Json update)
                 protocol_format_bad_request(line, sizeof(line));
                 return alloc_line(line);
             }
             json_decref(payload);
             rc = devices_feed_now(dev, food, water);
         } else if (strcmp(action, "DRINK_NOW") == 0 && dev->identity.type == DEVICE_DRINKER) {
+<<<<<<< HEAD
             json_t *payload = parse_payload_object(rest);
             double water = 0.0;
             if (!payload || require_number(payload, "nuoc_l", &water) != 0) {
                 if (payload) json_decref(payload);
+=======
+            double water = dev->data.drinker.Vw;
+            if (parse_one_double(rest, "{\"nuoc_l\":%lf}", &water) < 1) {
+>>>>>>> dbc7dfc (Json update)
                 protocol_format_bad_request(line, sizeof(line));
                 return alloc_line(line);
             }
             json_decref(payload);
             rc = devices_drink_now(dev, water);
         } else if (strcmp(action, "SPRAY_NOW") == 0 && dev->identity.type == DEVICE_SPRAYER) {
+<<<<<<< HEAD
             json_t *payload = parse_payload_object(rest);
             double Vh = 0.0;
             if (!payload || require_number(payload, "luu_luong_lph", &Vh) != 0) {
                 if (payload) json_decref(payload);
+=======
+            double Vh = dev->data.sprayer.Vh;
+            if (parse_one_double(rest, "{\"luu_luong_lph\":%lf}", &Vh) < 1) {
+>>>>>>> dbc7dfc (Json update)
                 protocol_format_bad_request(line, sizeof(line));
                 return alloc_line(line);
             }
@@ -313,29 +328,40 @@ char *handle_command(int fd, enum CommandType cmd, char *args) {
         }
         int rc = -1;
         if (dev->identity.type == DEVICE_FAN) {
+<<<<<<< HEAD
             json_t *payload = parse_payload_object(json_payload);
             int speed = 0;
             if (!payload ||
                 require_int(payload, "toc_do", &speed) != 0) {
                 if (payload) json_decref(payload);
+=======
+            double Tmax = dev->data.fan.Tmax, Tp1 = dev->data.fan.Tp1;
+            if (parse_two_doubles(json_payload, "{\"nhiet_do_bat_c\":%lf,\"nhiet_do_tat_c\":%lf}", &Tmax, &Tp1) < 2) {
+>>>>>>> dbc7dfc (Json update)
                 protocol_format_bad_request(line, sizeof(line));
                 return alloc_line(line);
             }
             json_decref(payload);
             rc = devices_set_config_fan(dev, speed);
         } else if (dev->identity.type == DEVICE_HEATER) {
+<<<<<<< HEAD
             json_t *payload = parse_payload_object(json_payload);
             double Tmin = 0.0, Tp2 = 0.0;
             if (!payload ||
                 require_number(payload, "nhiet_do_bat_c", &Tmin) != 0 ||
                 require_number(payload, "nhiet_do_tat_c", &Tp2) != 0) {
                 if (payload) json_decref(payload);
+=======
+            double Tmin = dev->data.heater.Tmin, Tp2 = dev->data.heater.Tp2;
+            if (parse_two_doubles(json_payload, "{\"nhiet_do_bat_c\":%lf,\"nhiet_do_tat_c\":%lf}", &Tmin, &Tp2) < 2) {
+>>>>>>> dbc7dfc (Json update)
                 protocol_format_bad_request(line, sizeof(line));
                 return alloc_line(line);
             }
             json_decref(payload);
             rc = devices_set_config_heater(dev, Tmin, Tp2, dev->data.heater.mode);
         } else if (dev->identity.type == DEVICE_SPRAYER) {
+<<<<<<< HEAD
             json_t *payload = parse_payload_object(json_payload);
             double Hmin = 0.0, Hp = 0.0, Vh = 0.0;
             if (!payload ||
@@ -343,28 +369,42 @@ char *handle_command(int fd, enum CommandType cmd, char *args) {
                 require_number(payload, "do_am_muc_tieu_pct", &Hp) != 0 ||
                 require_number(payload, "luu_luong_lph", &Vh) != 0) {
                 if (payload) json_decref(payload);
+=======
+            double Hmin = dev->data.sprayer.Hmin, Hp = dev->data.sprayer.Hp, Vh = dev->data.sprayer.Vh;
+            if (parse_three_doubles(json_payload, "{\"do_am_bat_pct\":%lf,\"do_am_muc_tieu_pct\":%lf,\"luu_luong_lph\":%lf}", &Hmin, &Hp, &Vh) < 3) {
+>>>>>>> dbc7dfc (Json update)
                 protocol_format_bad_request(line, sizeof(line));
                 return alloc_line(line);
             }
             json_decref(payload);
             rc = devices_set_config_sprayer(dev, Hmin, Hp, Vh);
         } else if (dev->identity.type == DEVICE_FEEDER) {
+<<<<<<< HEAD
             json_t *payload = parse_payload_object(json_payload);
             double W = 0.0, Vw = 0.0;
             if (!payload ||
                 require_number(payload, "thuc_an_kg", &W) != 0 ||
                 require_number(payload, "nuoc_l", &Vw) != 0) {
                 if (payload) json_decref(payload);
+=======
+            double W = dev->data.feeder.W, Vw = dev->data.feeder.Vw;
+            if (parse_two_doubles(json_payload, "{\"thuc_an_kg\":%lf,\"nuoc_l\":%lf}", &W, &Vw) < 2) {
+>>>>>>> dbc7dfc (Json update)
                 protocol_format_bad_request(line, sizeof(line));
                 return alloc_line(line);
             }
             json_decref(payload);
             rc = devices_set_config_feeder(dev, W, Vw, dev->data.feeder.schedule, dev->data.feeder.schedule_count);
         } else if (dev->identity.type == DEVICE_DRINKER) {
+<<<<<<< HEAD
             json_t *payload = parse_payload_object(json_payload);
             double Vw = 0.0;
             if (!payload || require_number(payload, "nuoc_l", &Vw) != 0) {
                 if (payload) json_decref(payload);
+=======
+            double Vw = dev->data.drinker.Vw;
+            if (parse_one_double(json_payload, "{\"nuoc_l\":%lf}", &Vw) < 1) {
+>>>>>>> dbc7dfc (Json update)
                 protocol_format_bad_request(line, sizeof(line));
                 return alloc_line(line);
             }

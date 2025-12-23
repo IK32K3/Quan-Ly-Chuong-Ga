@@ -287,6 +287,7 @@ static void display_info(const char *json) {
         printf("Nhiet do: %.1f %s\n", t, ut);
         printf("Do am: %.1f %s\n", h, uh);
     } else if (strcmp(type, "fan") == 0) {
+<<<<<<< HEAD
         const char *state = json_get_string_or_empty(root, "state");
         int speed = (int)json_get_number_or_zero(root, "toc_do");
         printf("Trang thai: %s\n", state);
@@ -306,10 +307,40 @@ static void display_info(const char *json) {
         double luu_luong_lph = json_get_number_or_zero(root, "luu_luong_lph");
         const char *uh = json_get_string_or_empty(root, "unit_humidity");
         const char *uf = json_get_string_or_empty(root, "unit_flow");
+=======
+        char state[8], unit[8];
+        double nhiet_do_bat_c = 0.0, nhiet_do_tat_c = 0.0;
+        json_get_string(json, "state", state, sizeof(state));
+        json_get_double(json, "nhiet_do_bat_c", &nhiet_do_bat_c);
+        json_get_double(json, "nhiet_do_tat_c", &nhiet_do_tat_c);
+        json_get_string(json, "unit_temp", unit, sizeof(unit));
+        printf("Trang thai: %s\n", state);
+        printf("Nhiet do bat: %.1f %s | Nhiet do tat: %.1f %s\n", nhiet_do_bat_c, unit, nhiet_do_tat_c, unit);
+    } else if (strcmp(type, "heater") == 0) {
+        char state[8], unit[8], mode[16];
+        double nhiet_do_bat_c = 0.0, nhiet_do_tat_c = 0.0;
+        json_get_string(json, "state", state, sizeof(state));
+        json_get_double(json, "nhiet_do_bat_c", &nhiet_do_bat_c);
+        json_get_double(json, "nhiet_do_tat_c", &nhiet_do_tat_c);
+        json_get_string(json, "mode", mode, sizeof(mode));
+        json_get_string(json, "unit_temp", unit, sizeof(unit));
+        printf("Trang thai: %s (mode %s)\n", state, mode);
+        printf("Nhiet do bat: %.1f %s | Nhiet do tat: %.1f %s\n", nhiet_do_bat_c, unit, nhiet_do_tat_c, unit);
+    } else if (strcmp(type, "sprayer") == 0) {
+        char state[8], uh[8], uf[8];
+        double do_am_bat_pct = 0.0, do_am_muc_tieu_pct = 0.0, luu_luong_lph = 0.0;
+        json_get_string(json, "state", state, sizeof(state));
+        json_get_double(json, "do_am_bat_pct", &do_am_bat_pct);
+        json_get_double(json, "do_am_muc_tieu_pct", &do_am_muc_tieu_pct);
+        json_get_double(json, "luu_luong_lph", &luu_luong_lph);
+        json_get_string(json, "unit_humidity", uh, sizeof(uh));
+        json_get_string(json, "unit_flow", uf, sizeof(uf));
+>>>>>>> dbc7dfc (Json update)
         printf("Trang thai: %s\n", state);
         printf("Nguong do am bat/muc tieu: %.1f/%.1f %s\n", do_am_bat_pct, do_am_muc_tieu_pct, uh);
         printf("Luu luong phun: %.1f %s\n", luu_luong_lph, uf);
     } else if (strcmp(type, "feeder") == 0) {
+<<<<<<< HEAD
         const char *state = json_get_string_or_empty(root, "state");
         double thuc_an_kg = json_get_number_or_zero(root, "thuc_an_kg");
         double nuoc_l = json_get_number_or_zero(root, "nuoc_l");
@@ -321,6 +352,23 @@ static void display_info(const char *json) {
         const char *state = json_get_string_or_empty(root, "state");
         double nuoc_l = json_get_number_or_zero(root, "nuoc_l");
         const char *uw = json_get_string_or_empty(root, "unit_water");
+=======
+        char state[8], uf[8], uw[8];
+        double thuc_an_kg = 0.0, nuoc_l = 0.0;
+        json_get_string(json, "state", state, sizeof(state));
+        json_get_double(json, "thuc_an_kg", &thuc_an_kg);
+        json_get_double(json, "nuoc_l", &nuoc_l);
+        json_get_string(json, "unit_food", uf, sizeof(uf));
+        json_get_string(json, "unit_water", uw, sizeof(uw));
+        printf("Trang thai: %s\n", state);
+        printf("Suat an: %.1f %s, Nuoc: %.1f %s\n", thuc_an_kg, uf, nuoc_l, uw);
+    } else if (strcmp(type, "drinker") == 0) {
+        char state[8], uw[8];
+        double nuoc_l = 0.0;
+        json_get_string(json, "state", state, sizeof(state));
+        json_get_double(json, "nuoc_l", &nuoc_l);
+        json_get_string(json, "unit_water", uw, sizeof(uw));
+>>>>>>> dbc7dfc (Json update)
         printf("Trang thai: %s\n", state);
         printf("Luong nuoc moi lan: %.1f %s\n", nuoc_l, uw);
     } else if (strcmp(type, "egg_counter") == 0) {
@@ -470,6 +518,7 @@ static void menu_setcfg(struct UiContext *ctx) {
     char json[MAX_JSON_LEN] = {0};
     switch (d->type) {
     case DEVICE_FAN: {
+<<<<<<< HEAD
         int speed = 0;
         if (read_int("Nhap toc do quat (1-3): ", &speed) != 0) return;
         if (speed < 1 || speed > 3) {
@@ -477,6 +526,12 @@ static void menu_setcfg(struct UiContext *ctx) {
             return;
         }
         snprintf(json, sizeof(json), "{\"toc_do\":%d}", speed);
+=======
+        double Tmax, Tp1;
+        if (read_double("Nhap nhiet do bat quat (do C): ", &Tmax) != 0) return;
+        if (read_double("Nhap nhiet do tat quat (do C): ", &Tp1) != 0) return;
+        snprintf(json, sizeof(json), "{\"nhiet_do_bat_c\":%.1f,\"nhiet_do_tat_c\":%.1f}", Tmax, Tp1);
+>>>>>>> dbc7dfc (Json update)
         break;
     }
     case DEVICE_HEATER: {
