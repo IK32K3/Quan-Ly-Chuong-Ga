@@ -11,21 +11,12 @@
 #include <stdlib.h>
 #include <string.h>
 
-/**
- * @file coop_logic.c
- * @brief Xử lý command từ client và thao tác trên dữ liệu chuồng/thiết bị.
- *
- * Module này giữ state trong bộ nhớ (g_coops/g_devices) và đồng bộ xuống file
- * `farm_state.json` sau các thao tác thay đổi dữ liệu.
- */
-
-/* Biến dùng chung cho B */
 static struct CoopsContext g_coops;
 static struct DevicesContext g_devices;
 
 static const char *FARM_STATE_PATH = "farm_state.json";
 
-/** @brief Nạp thêm dữ liệu farm từ đĩa và merge vào state hiện tại (không ghi đè device đã có). */
+/** @brief Nạp thêm dữ liệu farm từ đĩa và merge vào state hiện tại. */
 static void merge_farm_from_disk(void) {
     struct CoopsContext file_coops;
     struct DevicesContext file_devices;
@@ -131,13 +122,9 @@ static void handle_coop_list(int fd) {
 }
 
 /**
- * @brief Router xử lý command (dispatch theo `cmd`).
- *
- * Với các lệnh trả nhiều dòng (SCAN/COOPLIST), hàm sẽ tự gửi và trả NULL.
- * Với các lệnh khác, hàm trả về 1 dòng response đã cấp phát (caller free).
+ * @brief Router xử lý command .
  */
 char *handle_command(int fd, enum CommandType cmd, char *args) {
-    /* Lưu ý: net_server sẽ gửi response trả về; riêng SCAN tự gửi nhiều dòng và trả NULL */
     char line[MAX_LINE_LEN];
     switch (cmd) {
     case CMD_SCAN:
@@ -244,21 +231,21 @@ char *handle_command(int fd, enum CommandType cmd, char *args) {
             rc = devices_set_state(dev, DEVICE_OFF);
         } else if (strcmp(action, "FEED_NOW") == 0 && dev->identity.type == DEVICE_FEEDER) {
             double food = dev->data.feeder.W, water = dev->data.feeder.Vw;
-            if (parse_two_doubles(rest, "{\"food\":%lf,\"water\":%lf}", &food, &water) < 2) {
+            if (parse_two_doubles(rest, "{\"thuc_an_kg\":%lf,\"nuoc_l\":%lf}", &food, &water) < 2) {
                 protocol_format_bad_request(line, sizeof(line));
                 return alloc_line(line);
             }
             rc = devices_feed_now(dev, food, water);
         } else if (strcmp(action, "DRINK_NOW") == 0 && dev->identity.type == DEVICE_DRINKER) {
             double water = dev->data.drinker.Vw;
-            if (parse_one_double(rest, "{\"water\":%lf}", &water) < 1) {
+            if (parse_one_double(rest, "{\"nuoc_l\":%lf}", &water) < 1) {
                 protocol_format_bad_request(line, sizeof(line));
                 return alloc_line(line);
             }
             rc = devices_drink_now(dev, water);
         } else if (strcmp(action, "SPRAY_NOW") == 0 && dev->identity.type == DEVICE_SPRAYER) {
             double Vh = dev->data.sprayer.Vh;
-            if (parse_one_double(rest, "{\"Vh\":%lf}", &Vh) < 1) {
+            if (parse_one_double(rest, "{\"luu_luong_lph\":%lf}", &Vh) < 1) {
                 protocol_format_bad_request(line, sizeof(line));
                 return alloc_line(line);
             }
@@ -301,35 +288,35 @@ char *handle_command(int fd, enum CommandType cmd, char *args) {
         int rc = -1;
         if (dev->identity.type == DEVICE_FAN) {
             double Tmax = dev->data.fan.Tmax, Tp1 = dev->data.fan.Tp1;
-            if (parse_two_doubles(json_payload, "{\"Tmax\":%lf,\"Tp1\":%lf}", &Tmax, &Tp1) < 2) {
+            if (parse_two_doubles(json_payload, "{\"nhiet_do_bat_c\":%lf,\"nhiet_do_tat_c\":%lf}", &Tmax, &Tp1) < 2) {
                 protocol_format_bad_request(line, sizeof(line));
                 return alloc_line(line);
             }
             rc = devices_set_config_fan(dev, Tmax, Tp1);
         } else if (dev->identity.type == DEVICE_HEATER) {
             double Tmin = dev->data.heater.Tmin, Tp2 = dev->data.heater.Tp2;
-            if (parse_two_doubles(json_payload, "{\"Tmin\":%lf,\"Tp2\":%lf}", &Tmin, &Tp2) < 2) {
+            if (parse_two_doubles(json_payload, "{\"nhiet_do_bat_c\":%lf,\"nhiet_do_tat_c\":%lf}", &Tmin, &Tp2) < 2) {
                 protocol_format_bad_request(line, sizeof(line));
                 return alloc_line(line);
             }
             rc = devices_set_config_heater(dev, Tmin, Tp2, dev->data.heater.mode);
         } else if (dev->identity.type == DEVICE_SPRAYER) {
             double Hmin = dev->data.sprayer.Hmin, Hp = dev->data.sprayer.Hp, Vh = dev->data.sprayer.Vh;
-            if (parse_three_doubles(json_payload, "{\"Hmin\":%lf,\"Hp\":%lf,\"Vh\":%lf}", &Hmin, &Hp, &Vh) < 3) {
+            if (parse_three_doubles(json_payload, "{\"do_am_bat_pct\":%lf,\"do_am_muc_tieu_pct\":%lf,\"luu_luong_lph\":%lf}", &Hmin, &Hp, &Vh) < 3) {
                 protocol_format_bad_request(line, sizeof(line));
                 return alloc_line(line);
             }
             rc = devices_set_config_sprayer(dev, Hmin, Hp, Vh);
         } else if (dev->identity.type == DEVICE_FEEDER) {
             double W = dev->data.feeder.W, Vw = dev->data.feeder.Vw;
-            if (parse_two_doubles(json_payload, "{\"W\":%lf,\"Vw\":%lf}", &W, &Vw) < 2) {
+            if (parse_two_doubles(json_payload, "{\"thuc_an_kg\":%lf,\"nuoc_l\":%lf}", &W, &Vw) < 2) {
                 protocol_format_bad_request(line, sizeof(line));
                 return alloc_line(line);
             }
             rc = devices_set_config_feeder(dev, W, Vw, dev->data.feeder.schedule, dev->data.feeder.schedule_count);
         } else if (dev->identity.type == DEVICE_DRINKER) {
             double Vw = dev->data.drinker.Vw;
-            if (parse_one_double(json_payload, "{\"Vw\":%lf}", &Vw) < 1) {
+            if (parse_one_double(json_payload, "{\"nuoc_l\":%lf}", &Vw) < 1) {
                 protocol_format_bad_request(line, sizeof(line));
                 return alloc_line(line);
             }

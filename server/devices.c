@@ -392,7 +392,7 @@ int devices_info_json(const struct Device *dev, char *out_json, size_t out_len) 
         break;
     case DEVICE_FAN:
         written = snprintf(out_json, out_len,
-            "{\"device_id\":\"%s\",\"type\":\"fan\",\"state\":\"%s\",\"Tmax\":%.1f,\"Tp1\":%.1f,"
+            "{\"device_id\":\"%s\",\"type\":\"fan\",\"state\":\"%s\",\"nhiet_do_bat_c\":%.1f,\"nhiet_do_tat_c\":%.1f,"
             "\"unit_temp\":\"%s\"}",
             dev->identity.id,
             dev->data.fan.state == DEVICE_ON ? "ON" : "OFF",
@@ -402,7 +402,7 @@ int devices_info_json(const struct Device *dev, char *out_json, size_t out_len) 
         break;
     case DEVICE_HEATER:
         written = snprintf(out_json, out_len,
-            "{\"device_id\":\"%s\",\"type\":\"heater\",\"state\":\"%s\",\"Tmin\":%.1f,\"Tp2\":%.1f,"
+            "{\"device_id\":\"%s\",\"type\":\"heater\",\"state\":\"%s\",\"nhiet_do_bat_c\":%.1f,\"nhiet_do_tat_c\":%.1f,"
             "\"mode\":\"%s\",\"unit_temp\":\"%s\"}",
             dev->identity.id,
             dev->data.heater.state == DEVICE_ON ? "ON" : "OFF",
@@ -413,8 +413,8 @@ int devices_info_json(const struct Device *dev, char *out_json, size_t out_len) 
         break;
     case DEVICE_SPRAYER:
         written = snprintf(out_json, out_len,
-            "{\"device_id\":\"%s\",\"type\":\"sprayer\",\"state\":\"%s\",\"Hmin\":%.1f,\"Hp\":%.1f,"
-            "\"Vh\":%.1f,\"unit_humidity\":\"%s\",\"unit_flow\":\"%s\"}",
+            "{\"device_id\":\"%s\",\"type\":\"sprayer\",\"state\":\"%s\",\"do_am_bat_pct\":%.1f,\"do_am_muc_tieu_pct\":%.1f,"
+            "\"luu_luong_lph\":%.1f,\"unit_humidity\":\"%s\",\"unit_flow\":\"%s\"}",
             dev->identity.id,
             dev->data.sprayer.state == DEVICE_ON ? "ON" : "OFF",
             dev->data.sprayer.Hmin,
@@ -442,7 +442,7 @@ int devices_info_json(const struct Device *dev, char *out_json, size_t out_len) 
         }
         snprintf(schedule_buf + pos, sizeof(schedule_buf) - pos, "]");
         written = snprintf(out_json, out_len,
-            "{\"device_id\":\"%s\",\"type\":\"feeder\",\"state\":\"%s\",\"W\":%.1f,\"Vw\":%.1f,"
+            "{\"device_id\":\"%s\",\"type\":\"feeder\",\"state\":\"%s\",\"thuc_an_kg\":%.1f,\"nuoc_l\":%.1f,"
             "\"unit_food\":\"%s\",\"unit_water\":\"%s\",\"schedule\":%s}",
             dev->identity.id,
             dev->data.feeder.state == DEVICE_ON ? "ON" : "OFF",
@@ -470,7 +470,7 @@ int devices_info_json(const struct Device *dev, char *out_json, size_t out_len) 
         }
         snprintf(schedule_buf + pos, sizeof(schedule_buf) - pos, "]");
         written = snprintf(out_json, out_len,
-            "{\"device_id\":\"%s\",\"type\":\"drinker\",\"state\":\"%s\",\"Vw\":%.1f,"
+            "{\"device_id\":\"%s\",\"type\":\"drinker\",\"state\":\"%s\",\"nuoc_l\":%.1f,"
             "\"unit_water\":\"%s\",\"schedule\":%s}",
             dev->identity.id,
             dev->data.drinker.state == DEVICE_ON ? "ON" : "OFF",

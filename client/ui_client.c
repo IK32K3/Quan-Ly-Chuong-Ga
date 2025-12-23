@@ -303,53 +303,53 @@ static void display_info(const char *json) {
         printf("Do am: %.1f %s\n", h, uh);
     } else if (strcmp(type, "fan") == 0) {
         char state[8], unit[8];
-        double Tmax = 0.0, Tp1 = 0.0;
+        double nhiet_do_bat_c = 0.0, nhiet_do_tat_c = 0.0;
         json_get_string(json, "state", state, sizeof(state));
-        json_get_double(json, "Tmax", &Tmax);
-        json_get_double(json, "Tp1", &Tp1);
+        json_get_double(json, "nhiet_do_bat_c", &nhiet_do_bat_c);
+        json_get_double(json, "nhiet_do_tat_c", &nhiet_do_tat_c);
         json_get_string(json, "unit_temp", unit, sizeof(unit));
         printf("Trang thai: %s\n", state);
-        printf("Tmax: %.1f %s | Tp1: %.1f %s\n", Tmax, unit, Tp1, unit);
+        printf("Nhiet do bat: %.1f %s | Nhiet do tat: %.1f %s\n", nhiet_do_bat_c, unit, nhiet_do_tat_c, unit);
     } else if (strcmp(type, "heater") == 0) {
         char state[8], unit[8], mode[16];
-        double Tmin = 0.0, Tp2 = 0.0;
+        double nhiet_do_bat_c = 0.0, nhiet_do_tat_c = 0.0;
         json_get_string(json, "state", state, sizeof(state));
-        json_get_double(json, "Tmin", &Tmin);
-        json_get_double(json, "Tp2", &Tp2);
+        json_get_double(json, "nhiet_do_bat_c", &nhiet_do_bat_c);
+        json_get_double(json, "nhiet_do_tat_c", &nhiet_do_tat_c);
         json_get_string(json, "mode", mode, sizeof(mode));
         json_get_string(json, "unit_temp", unit, sizeof(unit));
         printf("Trang thai: %s (mode %s)\n", state, mode);
-        printf("Tmin: %.1f %s | Tp2: %.1f %s\n", Tmin, unit, Tp2, unit);
+        printf("Nhiet do bat: %.1f %s | Nhiet do tat: %.1f %s\n", nhiet_do_bat_c, unit, nhiet_do_tat_c, unit);
     } else if (strcmp(type, "sprayer") == 0) {
         char state[8], uh[8], uf[8];
-        double Hmin = 0.0, Hp = 0.0, Vh = 0.0;
+        double do_am_bat_pct = 0.0, do_am_muc_tieu_pct = 0.0, luu_luong_lph = 0.0;
         json_get_string(json, "state", state, sizeof(state));
-        json_get_double(json, "Hmin", &Hmin);
-        json_get_double(json, "Hp", &Hp);
-        json_get_double(json, "Vh", &Vh);
+        json_get_double(json, "do_am_bat_pct", &do_am_bat_pct);
+        json_get_double(json, "do_am_muc_tieu_pct", &do_am_muc_tieu_pct);
+        json_get_double(json, "luu_luong_lph", &luu_luong_lph);
         json_get_string(json, "unit_humidity", uh, sizeof(uh));
         json_get_string(json, "unit_flow", uf, sizeof(uf));
         printf("Trang thai: %s\n", state);
-        printf("Nguong Hmin/Hp: %.1f/%.1f %s\n", Hmin, Hp, uh);
-        printf("Toc do phun: %.1f %s\n", Vh, uf);
+        printf("Nguong do am bat/muc tieu: %.1f/%.1f %s\n", do_am_bat_pct, do_am_muc_tieu_pct, uh);
+        printf("Luu luong phun: %.1f %s\n", luu_luong_lph, uf);
     } else if (strcmp(type, "feeder") == 0) {
         char state[8], uf[8], uw[8];
-        double W = 0.0, Vw = 0.0;
+        double thuc_an_kg = 0.0, nuoc_l = 0.0;
         json_get_string(json, "state", state, sizeof(state));
-        json_get_double(json, "W", &W);
-        json_get_double(json, "Vw", &Vw);
+        json_get_double(json, "thuc_an_kg", &thuc_an_kg);
+        json_get_double(json, "nuoc_l", &nuoc_l);
         json_get_string(json, "unit_food", uf, sizeof(uf));
         json_get_string(json, "unit_water", uw, sizeof(uw));
         printf("Trang thai: %s\n", state);
-        printf("Suat an: W=%.1f %s, Nuoc=%.1f %s\n", W, uf, Vw, uw);
+        printf("Suat an: %.1f %s, Nuoc: %.1f %s\n", thuc_an_kg, uf, nuoc_l, uw);
     } else if (strcmp(type, "drinker") == 0) {
         char state[8], uw[8];
-        double Vw = 0.0;
+        double nuoc_l = 0.0;
         json_get_string(json, "state", state, sizeof(state));
-        json_get_double(json, "Vw", &Vw);
+        json_get_double(json, "nuoc_l", &nuoc_l);
         json_get_string(json, "unit_water", uw, sizeof(uw));
         printf("Trang thai: %s\n", state);
-        printf("Luong nuoc moi lan: %.1f %s\n", Vw, uw);
+        printf("Luong nuoc moi lan: %.1f %s\n", nuoc_l, uw);
     } else if (strcmp(type, "egg_counter") == 0) {
         int eggs = 0;
         if (json_get_double(json, "egg_count", (double *)&eggs) == 0) {
@@ -459,17 +459,17 @@ static void menu_control(struct UiContext *ctx, int direct_mode) {
         if (read_double("Nhap luong thuc an (kg): ", &food) != 0) return;
         if (read_double("Nhap luong nuoc (L): ", &water) != 0) return;
         strncpy(action, "FEED_NOW", sizeof(action) - 1);
-        snprintf(payload, sizeof(payload), "{\"food\":%.1f,\"water\":%.1f}", food, water);
+        snprintf(payload, sizeof(payload), "{\"thuc_an_kg\":%.1f,\"nuoc_l\":%.1f}", food, water);
     } else if (direct_mode && d->type == DEVICE_DRINKER) {
         double water = 0.0;
         if (read_double("Nhap luong nuoc (L): ", &water) != 0) return;
         strncpy(action, "DRINK_NOW", sizeof(action) - 1);
-        snprintf(payload, sizeof(payload), "{\"water\":%.1f}", water);
+        snprintf(payload, sizeof(payload), "{\"nuoc_l\":%.1f}", water);
     } else if (direct_mode && d->type == DEVICE_SPRAYER) {
         double Vh = 0.0;
-        if (read_double("Nhap toc do phun Vh (L/h): ", &Vh) != 0) return;
+        if (read_double("Nhap luu luong phun (L/h): ", &Vh) != 0) return;
         strncpy(action, "SPRAY_NOW", sizeof(action) - 1);
-        snprintf(payload, sizeof(payload), "{\"Vh\":%.1f}", Vh);
+        snprintf(payload, sizeof(payload), "{\"luu_luong_lph\":%.1f}", Vh);
     } else {
         printf("Chon hanh dong (1=ON, 0=OFF): ");
         char line[8];
@@ -507,37 +507,37 @@ static void menu_setcfg(struct UiContext *ctx) {
     switch (d->type) {
     case DEVICE_FAN: {
         double Tmax, Tp1;
-        if (read_double("Nhap nguong bat quat (Tmax, do C): ", &Tmax) != 0) return;
-        if (read_double("Nhap nguong tat quat (Tp1, do C): ", &Tp1) != 0) return;
-        snprintf(json, sizeof(json), "{\"Tmax\":%.1f,\"Tp1\":%.1f}", Tmax, Tp1);
+        if (read_double("Nhap nhiet do bat quat (do C): ", &Tmax) != 0) return;
+        if (read_double("Nhap nhiet do tat quat (do C): ", &Tp1) != 0) return;
+        snprintf(json, sizeof(json), "{\"nhiet_do_bat_c\":%.1f,\"nhiet_do_tat_c\":%.1f}", Tmax, Tp1);
         break;
     }
     case DEVICE_HEATER: {
         double Tmin, Tp2;
-        if (read_double("Nhap nguong bat den suoi (Tmin, do C): ", &Tmin) != 0) return;
-        if (read_double("Nhap nguong tat den suoi (Tp2, do C): ", &Tp2) != 0) return;
-        snprintf(json, sizeof(json), "{\"Tmin\":%.1f,\"Tp2\":%.1f}", Tmin, Tp2);
+        if (read_double("Nhap nhiet do bat den suoi (do C): ", &Tmin) != 0) return;
+        if (read_double("Nhap nhiet do tat den suoi (do C): ", &Tp2) != 0) return;
+        snprintf(json, sizeof(json), "{\"nhiet_do_bat_c\":%.1f,\"nhiet_do_tat_c\":%.1f}", Tmin, Tp2);
         break;
     }
     case DEVICE_SPRAYER: {
         double Hmin, Hp, Vh;
-        if (read_double("Nhap nguong do am bat phun (Hmin, %%): ", &Hmin) != 0) return;
-        if (read_double("Nhap do am muc tieu (Hp, %%): ", &Hp) != 0) return;
-        if (read_double("Nhap toc do phun (Vh, L/h): ", &Vh) != 0) return;
-        snprintf(json, sizeof(json), "{\"Hmin\":%.1f,\"Hp\":%.1f,\"Vh\":%.1f}", Hmin, Hp, Vh);
+        if (read_double("Nhap do am bat phun (%%): ", &Hmin) != 0) return;
+        if (read_double("Nhap do am muc tieu (%%): ", &Hp) != 0) return;
+        if (read_double("Nhap luu luong phun (L/h): ", &Vh) != 0) return;
+        snprintf(json, sizeof(json), "{\"do_am_bat_pct\":%.1f,\"do_am_muc_tieu_pct\":%.1f,\"luu_luong_lph\":%.1f}", Hmin, Hp, Vh);
         break;
     }
     case DEVICE_FEEDER: {
         double W, Vw;
-        if (read_double("Nhap khau phan an moi lan (W, kg): ", &W) != 0) return;
-        if (read_double("Nhap luong nuoc moi lan (Vw, L): ", &Vw) != 0) return;
-        snprintf(json, sizeof(json), "{\"W\":%.1f,\"Vw\":%.1f}", W, Vw);
+        if (read_double("Nhap khau phan an moi lan (kg): ", &W) != 0) return;
+        if (read_double("Nhap luong nuoc moi lan (L): ", &Vw) != 0) return;
+        snprintf(json, sizeof(json), "{\"thuc_an_kg\":%.1f,\"nuoc_l\":%.1f}", W, Vw);
         break;
     }
     case DEVICE_DRINKER: {
         double Vw;
-        if (read_double("Nhap luong nuoc moi lan (Vw, L): ", &Vw) != 0) return;
-        snprintf(json, sizeof(json), "{\"Vw\":%.1f}", Vw);
+        if (read_double("Nhap luong nuoc moi lan (L): ", &Vw) != 0) return;
+        snprintf(json, sizeof(json), "{\"nuoc_l\":%.1f}", Vw);
         break;
     }
     default:
