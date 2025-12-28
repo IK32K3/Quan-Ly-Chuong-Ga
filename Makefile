@@ -5,9 +5,13 @@ CLIENT_BIN := client_app
 SERVER_BIN := server_app
 
 CLIENT_INCLUDES := -Ishared
-CLIENT_LIBS := -ljansson
+CLIENT_LIBS :=
 SERVER_INCLUDES := -Ishared
-SERVER_LIBS := -ljansson
+SERVER_LIBS :=
+
+JANSSON_DIR := third_party/jansson
+JANSSON_SRC := $(wildcard $(JANSSON_DIR)/src/*.c)
+JANSSON_INC := -I$(JANSSON_DIR)/src
 
 CLIENT_SRCS := \
 	client/main_client.c \
@@ -28,6 +32,17 @@ SERVER_SRCS := \
 	server/storage.c \
 	shared/types.c \
 	shared/protocol.c
+
+ifneq ($(JANSSON_SRC),)
+CFLAGS += -DHAVE_CONFIG_H
+CLIENT_INCLUDES += $(JANSSON_INC)
+SERVER_INCLUDES += $(JANSSON_INC)
+CLIENT_SRCS += $(JANSSON_SRC)
+SERVER_SRCS += $(JANSSON_SRC)
+else
+CLIENT_LIBS += -ljansson
+SERVER_LIBS += -ljansson
+endif
 
 .PHONY: all client server clean
 
