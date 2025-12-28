@@ -100,6 +100,22 @@ static int read_double(const char *prompt, double *out) {
     return 0;
 }
 
+/** @brief Hỏi người dùng nhập số nguyên theo prompt. */
+static int read_int(const char *prompt, int *out) {
+    char line[64];
+    printf("%s", prompt);
+    if (read_line(line, sizeof(line)) != 0) {
+        return -1;
+    }
+    char *endptr = NULL;
+    long v = strtol(line, &endptr, 10);
+    if (endptr == line || *endptr != '\0') {
+        return -1;
+    }
+    *out = (int)v;
+    return 0;
+}
+
 /** @brief Kiểm tra type có hỗ trợ ON/OFF hay không. */
 static int device_supports_power(enum DeviceType type) {
     switch (type) {
@@ -272,11 +288,9 @@ static void display_info(const char *json) {
         printf("Do am: %.1f %s\n", h, uh);
     } else if (strcmp(type, "fan") == 0) {
         const char *state = json_get_string_or_empty(root, "state");
-        double nhiet_do_bat_c = json_get_number_or_zero(root, "nhiet_do_bat_c");
-        double nhiet_do_tat_c = json_get_number_or_zero(root, "nhiet_do_tat_c");
-        const char *unit = json_get_string_or_empty(root, "unit_temp");
+        int speed = (int)json_get_number_or_zero(root, "toc_do");
         printf("Trang thai: %s\n", state);
-        printf("Nhiet do bat: %.1f %s | Nhiet do tat: %.1f %s\n", nhiet_do_bat_c, unit, nhiet_do_tat_c, unit);
+        printf("Toc do quat: %d (1-3)\n", speed);
     } else if (strcmp(type, "heater") == 0) {
         const char *state = json_get_string_or_empty(root, "state");
         double nhiet_do_bat_c = json_get_number_or_zero(root, "nhiet_do_bat_c");
@@ -456,10 +470,13 @@ static void menu_setcfg(struct UiContext *ctx) {
     char json[MAX_JSON_LEN] = {0};
     switch (d->type) {
     case DEVICE_FAN: {
-        double Tmax, Tp1;
-        if (read_double("Nhap nhiet do bat quat (do C): ", &Tmax) != 0) return;
-        if (read_double("Nhap nhiet do tat quat (do C): ", &Tp1) != 0) return;
-        snprintf(json, sizeof(json), "{\"nhiet_do_bat_c\":%.1f,\"nhiet_do_tat_c\":%.1f}", Tmax, Tp1);
+        int speed = 0;
+        if (read_int("Nhap toc do quat (1-3): ", &speed) != 0) return;
+        if (speed < 1 || speed > 3) {
+            printf("Toc do khong hop le.\n");
+            return;
+        }
+        snprintf(json, sizeof(json), "{\"toc_do\":%d}", speed);
         break;
     }
     case DEVICE_HEATER: {

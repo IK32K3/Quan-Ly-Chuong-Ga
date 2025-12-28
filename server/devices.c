@@ -56,9 +56,7 @@ static void init_fan(struct Device *dev, const char *id) {
     dev->identity.type = DEVICE_FAN;
     strncpy(dev->password, "123456", sizeof(dev->password) - 1);
     dev->data.fan.state = DEVICE_ON;
-    dev->data.fan.Tmax = 32.0;
-    dev->data.fan.Tp1 = 28.0;
-    strncpy(dev->data.fan.unit_temp, "C", sizeof(dev->data.fan.unit_temp) - 1);
+    dev->data.fan.speed = 2;
 }
 
 /** @brief Khởi tạo thiết bị đèn sưởi mặc định. */
@@ -229,17 +227,14 @@ int devices_spray_now(struct Device *dev, double Vh) {
     return 0;
 }
 
-int devices_set_config_fan(struct Device *dev, double Tmax, double Tp1) {
+int devices_set_config_fan(struct Device *dev, int speed) {
     if (!dev || dev->identity.type != DEVICE_FAN) {
         return -1;
     }
-    if (!in_range(Tmax, (double)LIMIT_TEMP_MIN_C, (double)LIMIT_TEMP_MAX_C) ||
-        !in_range(Tp1, (double)LIMIT_TEMP_MIN_C, (double)LIMIT_TEMP_MAX_C) ||
-        Tp1 > Tmax) {
+    if (speed < 1 || speed > 3) {
         return -2;
     }
-    dev->data.fan.Tmax = Tmax;
-    dev->data.fan.Tp1 = Tp1;
+    dev->data.fan.speed = speed;
     return 0;
 }
 
@@ -385,9 +380,7 @@ int devices_info_json(const struct Device *dev, char *out_json, size_t out_len) 
     case DEVICE_FAN:
         if (json_object_set_new(root, "type", json_string("fan")) != 0 ||
             json_object_set_new(root, "state", json_string(power_state_string(dev->data.fan.state))) != 0 ||
-            json_object_set_new(root, "nhiet_do_bat_c", json_real(dev->data.fan.Tmax)) != 0 ||
-            json_object_set_new(root, "nhiet_do_tat_c", json_real(dev->data.fan.Tp1)) != 0 ||
-            json_object_set_new(root, "unit_temp", json_string(dev->data.fan.unit_temp)) != 0) {
+            json_object_set_new(root, "toc_do", json_integer(dev->data.fan.speed)) != 0) {
             goto out;
         }
         break;

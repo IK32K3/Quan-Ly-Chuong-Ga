@@ -86,6 +86,20 @@ static int require_number(json_t *obj, const char *key, double *out) {
     return 0;
 }
 
+static int require_int(json_t *obj, const char *key, int *out) {
+    if (!obj || !key || !out) return -1;
+    json_t *v = json_object_get(obj, key);
+    if (json_is_integer(v)) {
+        *out = (int)json_integer_value(v);
+        return 0;
+    }
+    if (json_is_number(v)) {
+        *out = (int)json_number_value(v);
+        return 0;
+    }
+    return -1;
+}
+
 /* Gửi nhiều dòng cho SCAN */
 /** @brief Xử lý command SCAN: gửi 0..N dòng RESP_DEVICE trực tiếp về client. */
 static void handle_scan(int fd) {
@@ -300,16 +314,15 @@ char *handle_command(int fd, enum CommandType cmd, char *args) {
         int rc = -1;
         if (dev->identity.type == DEVICE_FAN) {
             json_t *payload = parse_payload_object(json_payload);
-            double Tmax = 0.0, Tp1 = 0.0;
+            int speed = 0;
             if (!payload ||
-                require_number(payload, "nhiet_do_bat_c", &Tmax) != 0 ||
-                require_number(payload, "nhiet_do_tat_c", &Tp1) != 0) {
+                require_int(payload, "toc_do", &speed) != 0) {
                 if (payload) json_decref(payload);
                 protocol_format_bad_request(line, sizeof(line));
                 return alloc_line(line);
             }
             json_decref(payload);
-            rc = devices_set_config_fan(dev, Tmax, Tp1);
+            rc = devices_set_config_fan(dev, speed);
         } else if (dev->identity.type == DEVICE_HEATER) {
             json_t *payload = parse_payload_object(json_payload);
             double Tmin = 0.0, Tp2 = 0.0;

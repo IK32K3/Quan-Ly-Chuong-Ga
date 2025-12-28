@@ -109,13 +109,12 @@ static int parse_device_info_object(struct Device *dev, json_t *info) {
         break;
     }
     case DEVICE_FAN: {
-        json_t *tmax = json_object_get(info, "nhiet_do_bat_c");
-        json_t *tp1 = json_object_get(info, "nhiet_do_tat_c");
-        if (json_is_number(tmax)) dev->data.fan.Tmax = json_number_value(tmax);
-        if (json_is_number(tp1)) dev->data.fan.Tp1 = json_number_value(tp1);
-
-        json_t *unit = json_object_get(info, "unit_temp");
-        if (json_is_string(unit)) copy_string(dev->data.fan.unit_temp, sizeof(dev->data.fan.unit_temp), json_string_value(unit));
+        int speed = 2;
+        json_t *spd = json_object_get(info, "toc_do");
+        if (json_is_integer(spd)) speed = (int)json_integer_value(spd);
+        else if (json_is_number(spd)) speed = (int)json_number_value(spd);
+        if (speed < 1 || speed > 3) speed = 2;
+        dev->data.fan.speed = speed;
 
         json_t *state = json_object_get(info, "state");
         dev->data.fan.state = parse_state_or_default(json_is_string(state) ? json_string_value(state) : NULL, DEVICE_OFF);
@@ -221,9 +220,7 @@ static json_t *build_device_info_value(const struct Device *dev) {
         break;
     case DEVICE_FAN:
         (void)json_object_set_new(info, "state", json_string(dev->data.fan.state == DEVICE_ON ? "ON" : "OFF"));
-        (void)json_object_set_new(info, "nhiet_do_bat_c", json_real(dev->data.fan.Tmax));
-        (void)json_object_set_new(info, "nhiet_do_tat_c", json_real(dev->data.fan.Tp1));
-        (void)json_object_set_new(info, "unit_temp", json_string(dev->data.fan.unit_temp));
+        (void)json_object_set_new(info, "toc_do", json_integer(dev->data.fan.speed));
         break;
     case DEVICE_HEATER:
         (void)json_object_set_new(info, "state", json_string(dev->data.heater.state == DEVICE_ON ? "ON" : "OFF"));
@@ -316,7 +313,7 @@ int storage_save_farm(const struct CoopsContext *coops, const struct DevicesCont
         (void)json_array_append_new(coops_arr, coop);
     }
 
-    int rc = json_dump_file(root, path, JSON_INDENT(2)) == 0 ? 0 : -1;
+    int rc = json_dump_file(root, path, JSON_INDENT(2) | JSON_REAL_PRECISION(4)) == 0 ? 0 : -1;
     json_decref(root);
     return rc;
 }

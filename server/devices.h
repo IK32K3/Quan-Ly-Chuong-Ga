@@ -54,9 +54,7 @@ struct DrinkerData {
 /** @brief Dữ liệu/cấu hình cho quạt. */
 struct FanData {
     enum DevicePowerState state;
-    double Tmax;
-    double Tp1;
-    char unit_temp[4];
+    int speed; /* 1..3 */
 };
 
 /** @brief Dữ liệu/cấu hình cho đèn sưởi. */
@@ -140,8 +138,8 @@ int devices_drink_now(struct Device *dev, double water);
 /** @brief Phun ngay (chỉ áp dụng cho `DEVICE_SPRAYER`). */
 int devices_spray_now(struct Device *dev, double Vh);
 
-/** @brief Cập nhật cấu hình quạt (ngưỡng bật/tắt). */
-int devices_set_config_fan(struct Device *dev, double Tmax, double Tp1);
+/** @brief Cập nhật cấu hình quạt (tốc độ 1..3). */
+int devices_set_config_fan(struct Device *dev, int speed);
 
 /** @brief Cập nhật cấu hình đèn sưởi (ngưỡng bật/tắt + mode). */
 int devices_set_config_heater(struct Device *dev, double Tmin, double Tp2, const char *mode);
