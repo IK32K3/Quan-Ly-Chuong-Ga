@@ -1,10 +1,11 @@
 #include "ui_client.h"
 
+#include <jansson.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-/* Helpers cho UI: tra cuu, nhap lieu va parse JSON don gian */
+/* Helpers cho UI: tra cuu, nhap lieu va parse JSON */
 
 /**
  * @file ui_client.c
@@ -12,7 +13,7 @@
  */
 
 /** @brief Tìm thiết bị trong context client theo ID. */
-static struct ClientDevice *find_client_device(struct UiContext *ctx, const char *id) {
+static const struct ClientDevice *find_client_device_const(const struct UiContext *ctx, const char *id) {
     if (!ctx || !id) {
         return NULL;
     }
@@ -22,6 +23,10 @@ static struct ClientDevice *find_client_device(struct UiContext *ctx, const char
         }
     }
     return NULL;
+}
+
+static struct ClientDevice *find_client_device(struct UiContext *ctx, const char *id) {
+    return (struct ClientDevice *)find_client_device_const(ctx, id);
 }
 
 /** @brief In danh sách chuồng và chỉ hiển thị các thiết bị đã CONNECT. */
@@ -34,7 +39,7 @@ static void print_coops_with_connection(const struct UiContext *ctx) {
         size_t printed = 0;
         for (size_t j = 0; j < c->device_count; ++j) {
             const struct CoopDevice *d = &c->devices[j];
-            const struct ClientDevice *cd = find_client_device((struct UiContext *)ctx, d->device_id);
+            const struct ClientDevice *cd = find_client_device_const(ctx, d->device_id);
             if (!(cd && cd->connected)) {
                 continue;
             }
@@ -160,44 +165,13 @@ static void refresh_coops(struct UiContext *ctx) {
     }
 }
 
-/** @brief Chọn một thiết bị bất kỳ trong chuồng (có thể chưa CONNECT). */
-static int select_device_in_coop(const struct UiContext *ctx, size_t coop_index, char *out_id, size_t out_id_len, enum DeviceType *out_type) {
-    if (!ctx || coop_index >= ctx->coop_list.count) return -1;
-    const struct Coop *c = &ctx->coop_list.coops[coop_index];
-    if (c->device_count == 0) {
-        printf("Chua co thiet bi nao trong chuong nay. Hay them truoc.\n");
-        return -1;
-    }
-    printf("Thiet bi trong chuong %s:\n", c->name);
-    for (size_t i = 0; i < c->device_count; ++i) {
-        const struct ClientDevice *cd = find_client_device((struct UiContext *)ctx, c->devices[i].device_id);
-        printf("%zu) %s (%s)%s\n",
-               i + 1,
-               c->devices[i].device_id,
-               device_type_to_string(c->devices[i].type),
-               (cd && cd->connected) ? " [DA KET NOI]" : "");
-    }
-    printf("Chon thiet bi (0 de quay lai): ");
-    char line[16];
-    if (read_line(line, sizeof(line)) != 0) return -1;
-    long idx = strtol(line, NULL, 10);
-    if (idx == 0) {
-        return -1;
-    }
-    if (idx < 0 || (size_t)idx > c->device_count) {
-        printf("Lua chon khong hop le.\n");
-        return -1;
-    }
-    const struct CoopDevice *d = &c->devices[idx - 1];
-    strncpy(out_id, d->device_id, out_id_len - 1);
-    out_id[out_id_len - 1] = '\0';
-    if (out_type) *out_type = d->type;
-    return 0;
-}
-
-/** @brief Chọn một thiết bị đã CONNECT trong chuồng. */
-static int select_connected_device_in_coop(const struct UiContext *ctx, size_t coop_index, char *out_id, size_t out_id_len, enum DeviceType *out_type) {
-    if (!ctx || coop_index >= ctx->coop_list.count) return -1;
+static int select_device_in_coop_impl(const struct UiContext *ctx,
+                                      size_t coop_index,
+                                      int require_connected,
+                                      char *out_id,
+                                      size_t out_id_len,
+                                      enum DeviceType *out_type) {
+    if (!ctx || coop_index >= ctx->coop_list.count || !out_id || out_id_len == 0) return -1;
     const struct Coop *c = &ctx->coop_list.coops[coop_index];
     if (c->device_count == 0) {
         printf("Chua co thiet bi nao trong chuong nay.\n");
@@ -206,22 +180,33 @@ static int select_connected_device_in_coop(const struct UiContext *ctx, size_t c
 
     size_t mapped[MAX_DEVICES];
     size_t mapped_count = 0;
-    for (size_t i = 0; i < c->device_count; ++i) {
-        const struct ClientDevice *cd = find_client_device((struct UiContext *)ctx, c->devices[i].device_id);
-        if (cd && cd->connected) {
-            mapped[mapped_count++] = i;
+    for (size_t i = 0; i < c->device_count && mapped_count < MAX_DEVICES; ++i) {
+        const struct ClientDevice *cd = find_client_device_const(ctx, c->devices[i].device_id);
+        if (require_connected && !(cd && cd->connected)) {
+            continue;
         }
+        mapped[mapped_count++] = i;
     }
     if (mapped_count == 0) {
-        printf("Chua ket noi thiet bi nao trong chuong %s.\n", c->name);
+        if (require_connected) {
+            printf("Chua ket noi thiet bi nao trong chuong %s.\n", c->name);
+        } else {
+            printf("Chua co thiet bi nao trong chuong nay.\n");
+        }
         return -1;
     }
 
-    printf("Thiet bi da ket noi trong chuong %s:\n", c->name);
+    printf("Thiet bi trong chuong %s:\n", c->name);
     for (size_t i = 0; i < mapped_count; ++i) {
         const struct CoopDevice *d = &c->devices[mapped[i]];
-        printf("%zu) %s (%s)\n", i + 1, d->device_id, device_type_to_string(d->type));
+        const struct ClientDevice *cd = find_client_device_const(ctx, d->device_id);
+        printf("%zu) %s (%s)%s\n",
+               i + 1,
+               d->device_id,
+               device_type_to_string(d->type),
+               (!require_connected && cd && cd->connected) ? " [DA KET NOI]" : "");
     }
+
     printf("Chon thiet bi (0 de quay lai): ");
     char line[16];
     if (read_line(line, sizeof(line)) != 0) return -1;
@@ -239,125 +224,103 @@ static int select_connected_device_in_coop(const struct UiContext *ctx, size_t c
     return 0;
 }
 
-/** @brief Tìm vị trí chuỗi khóa `"key"` trong JSON (parser đơn giản). */
-static const char *find_key(const char *json, const char *key) {
-    if (!json || !key) return NULL;
-    char pattern[64];
-    snprintf(pattern, sizeof(pattern), "\"%s\"", key);
-    return strstr(json, pattern);
+/** @brief Chọn một thiết bị bất kỳ trong chuồng (có thể chưa CONNECT). */
+static int select_device_in_coop(const struct UiContext *ctx, size_t coop_index, char *out_id, size_t out_id_len, enum DeviceType *out_type) {
+    return select_device_in_coop_impl(ctx, coop_index, 0, out_id, out_id_len, out_type);
 }
 
-/** @brief Lấy giá trị string cho `key` trong JSON (dạng `"key":"value"`). */
-static int json_get_string(const char *json, const char *key, char *out, size_t out_len) {
-    const char *p = find_key(json, key);
-    if (!p) return -1;
-    p = strchr(p, ':');
-    if (!p) return -1;
-    p++;
-    while (*p == ' ' || *p == '\t') p++;
-    if (*p != '"') return -1;
-    p++;
-    size_t idx = 0;
-    while (*p && *p != '"' && idx + 1 < out_len) {
-        out[idx++] = *p++;
-    }
-    out[idx] = '\0';
-    return 0;
+/** @brief Chọn một thiết bị đã CONNECT trong chuồng. */
+static int select_connected_device_in_coop(const struct UiContext *ctx, size_t coop_index, char *out_id, size_t out_id_len, enum DeviceType *out_type) {
+    return select_device_in_coop_impl(ctx, coop_index, 1, out_id, out_id_len, out_type);
 }
 
-/** @brief Lấy giá trị double cho `key` trong JSON (dùng `sscanf`). */
-static int json_get_double(const char *json, const char *key, double *out) {
-    const char *p = find_key(json, key);
-    if (!p) return -1;
-    p = strchr(p, ':');
-    if (!p) return -1;
-    p++;
-    while (*p == ' ' || *p == '\t') p++;
-    if (sscanf(p, "%lf", out) == 1) {
-        return 0;
-    }
-    return -1;
+static const char *json_get_string_or_empty(json_t *obj, const char *key) {
+    json_t *v = json_object_get(obj, key);
+    return json_is_string(v) ? json_string_value(v) : "";
+}
+
+static double json_get_number_or_zero(json_t *obj, const char *key) {
+    json_t *v = json_object_get(obj, key);
+    return json_is_number(v) ? json_number_value(v) : 0.0;
 }
 
 /* Hien thi thong tin thiet bi theo tung type*/
 /** @brief Hiển thị JSON INFO theo từng loại thiết bị. */
 static void display_info(const char *json) {
-    /* Thu parse thong tin chi tiet theo type */
-    char type[32];
-    char id[MAX_ID_LEN];
-    if (json_get_string(json, "type", type, sizeof(type)) != 0 ||
-        json_get_string(json, "device_id", id, sizeof(id)) != 0) {
+    json_t *root = json_loads(json, 0, NULL);
+    if (!json_is_object(root)) {
+        if (root) json_decref(root);
+        printf("Khong doc duoc thong tin thiet bi.\n");
+        return;
+    }
+
+    const char *type = json_get_string_or_empty(root, "type");
+    const char *id = json_get_string_or_empty(root, "device_id");
+    if (type[0] == '\0' || id[0] == '\0') {
+        json_decref(root);
         printf("Khong doc duoc thong tin thiet bi.\n");
         return;
     }
 
     printf("Thiet bi: %s (%s)\n", id, type);
     if (strcmp(type, "sensor") == 0) {
-        double t = 0.0, h = 0.0;
-        char ut[8], uh[8];
-        json_get_double(json, "temperature", &t);
-        json_get_double(json, "humidity", &h);
-        json_get_string(json, "unit_temperature", ut, sizeof(ut));
-        json_get_string(json, "unit_humidity", uh, sizeof(uh));
+        double t = json_get_number_or_zero(root, "temperature");
+        double h = json_get_number_or_zero(root, "humidity");
+        const char *ut = json_get_string_or_empty(root, "unit_temperature");
+        const char *uh = json_get_string_or_empty(root, "unit_humidity");
         printf("Nhiet do: %.1f %s\n", t, ut);
         printf("Do am: %.1f %s\n", h, uh);
     } else if (strcmp(type, "fan") == 0) {
-        char state[8], unit[8];
-        double nhiet_do_bat_c = 0.0, nhiet_do_tat_c = 0.0;
-        json_get_string(json, "state", state, sizeof(state));
-        json_get_double(json, "nhiet_do_bat_c", &nhiet_do_bat_c);
-        json_get_double(json, "nhiet_do_tat_c", &nhiet_do_tat_c);
-        json_get_string(json, "unit_temp", unit, sizeof(unit));
+        const char *state = json_get_string_or_empty(root, "state");
+        double nhiet_do_bat_c = json_get_number_or_zero(root, "nhiet_do_bat_c");
+        double nhiet_do_tat_c = json_get_number_or_zero(root, "nhiet_do_tat_c");
+        const char *unit = json_get_string_or_empty(root, "unit_temp");
         printf("Trang thai: %s\n", state);
         printf("Nhiet do bat: %.1f %s | Nhiet do tat: %.1f %s\n", nhiet_do_bat_c, unit, nhiet_do_tat_c, unit);
     } else if (strcmp(type, "heater") == 0) {
-        char state[8], unit[8], mode[16];
-        double nhiet_do_bat_c = 0.0, nhiet_do_tat_c = 0.0;
-        json_get_string(json, "state", state, sizeof(state));
-        json_get_double(json, "nhiet_do_bat_c", &nhiet_do_bat_c);
-        json_get_double(json, "nhiet_do_tat_c", &nhiet_do_tat_c);
-        json_get_string(json, "mode", mode, sizeof(mode));
-        json_get_string(json, "unit_temp", unit, sizeof(unit));
+        const char *state = json_get_string_or_empty(root, "state");
+        double nhiet_do_bat_c = json_get_number_or_zero(root, "nhiet_do_bat_c");
+        double nhiet_do_tat_c = json_get_number_or_zero(root, "nhiet_do_tat_c");
+        const char *mode = json_get_string_or_empty(root, "mode");
+        const char *unit = json_get_string_or_empty(root, "unit_temp");
         printf("Trang thai: %s (mode %s)\n", state, mode);
         printf("Nhiet do bat: %.1f %s | Nhiet do tat: %.1f %s\n", nhiet_do_bat_c, unit, nhiet_do_tat_c, unit);
     } else if (strcmp(type, "sprayer") == 0) {
-        char state[8], uh[8], uf[8];
-        double do_am_bat_pct = 0.0, do_am_muc_tieu_pct = 0.0, luu_luong_lph = 0.0;
-        json_get_string(json, "state", state, sizeof(state));
-        json_get_double(json, "do_am_bat_pct", &do_am_bat_pct);
-        json_get_double(json, "do_am_muc_tieu_pct", &do_am_muc_tieu_pct);
-        json_get_double(json, "luu_luong_lph", &luu_luong_lph);
-        json_get_string(json, "unit_humidity", uh, sizeof(uh));
-        json_get_string(json, "unit_flow", uf, sizeof(uf));
+        const char *state = json_get_string_or_empty(root, "state");
+        double do_am_bat_pct = json_get_number_or_zero(root, "do_am_bat_pct");
+        double do_am_muc_tieu_pct = json_get_number_or_zero(root, "do_am_muc_tieu_pct");
+        double luu_luong_lph = json_get_number_or_zero(root, "luu_luong_lph");
+        const char *uh = json_get_string_or_empty(root, "unit_humidity");
+        const char *uf = json_get_string_or_empty(root, "unit_flow");
         printf("Trang thai: %s\n", state);
         printf("Nguong do am bat/muc tieu: %.1f/%.1f %s\n", do_am_bat_pct, do_am_muc_tieu_pct, uh);
         printf("Luu luong phun: %.1f %s\n", luu_luong_lph, uf);
     } else if (strcmp(type, "feeder") == 0) {
-        char state[8], uf[8], uw[8];
-        double thuc_an_kg = 0.0, nuoc_l = 0.0;
-        json_get_string(json, "state", state, sizeof(state));
-        json_get_double(json, "thuc_an_kg", &thuc_an_kg);
-        json_get_double(json, "nuoc_l", &nuoc_l);
-        json_get_string(json, "unit_food", uf, sizeof(uf));
-        json_get_string(json, "unit_water", uw, sizeof(uw));
+        const char *state = json_get_string_or_empty(root, "state");
+        double thuc_an_kg = json_get_number_or_zero(root, "thuc_an_kg");
+        double nuoc_l = json_get_number_or_zero(root, "nuoc_l");
+        const char *uf = json_get_string_or_empty(root, "unit_food");
+        const char *uw = json_get_string_or_empty(root, "unit_water");
         printf("Trang thai: %s\n", state);
         printf("Suat an: %.1f %s, Nuoc: %.1f %s\n", thuc_an_kg, uf, nuoc_l, uw);
     } else if (strcmp(type, "drinker") == 0) {
-        char state[8], uw[8];
-        double nuoc_l = 0.0;
-        json_get_string(json, "state", state, sizeof(state));
-        json_get_double(json, "nuoc_l", &nuoc_l);
-        json_get_string(json, "unit_water", uw, sizeof(uw));
+        const char *state = json_get_string_or_empty(root, "state");
+        double nuoc_l = json_get_number_or_zero(root, "nuoc_l");
+        const char *uw = json_get_string_or_empty(root, "unit_water");
         printf("Trang thai: %s\n", state);
         printf("Luong nuoc moi lan: %.1f %s\n", nuoc_l, uw);
     } else if (strcmp(type, "egg_counter") == 0) {
-        int eggs = 0;
-        if (json_get_double(json, "egg_count", (double *)&eggs) == 0) {
-            printf("So trung dem duoc: %d\n", eggs);
+        json_t *eggs = json_object_get(root, "egg_count");
+        if (json_is_integer(eggs)) {
+            printf("So trung dem duoc: %lld\n", (long long)json_integer_value(eggs));
+        } else if (json_is_number(eggs)) {
+            printf("So trung dem duoc: %d\n", (int)json_number_value(eggs));
         }
     } else {
         printf("Loai thiet bi chua ho tro hien thi chi tiet.\n");
     }
+
+    json_decref(root);
 }
 
 /** @brief Menu: CONNECT thiết bị (chọn từ chuồng -> nhập mật khẩu). */
@@ -403,20 +366,25 @@ static const struct ClientDevice *require_connected(struct UiContext *ctx, const
     return d;
 }
 
-/* Menu xem thong tin: chi cho phep thiet bi da ket noi trong chuong */
-/** @brief Menu: INFO thiết bị đã CONNECT. */
-static void menu_info(struct UiContext *ctx) {
+static const struct ClientDevice *select_connected_device(struct UiContext *ctx, char *out_id, size_t out_id_len) {
+    if (!ctx || !out_id || out_id_len == 0) return NULL;
     refresh_coops(ctx);
     size_t coop_idx = 0;
     if (select_coop_index(&ctx->coop_list, &coop_idx) != 0) {
-        return;
+        return NULL;
     }
-    char id[MAX_ID_LEN];
     enum DeviceType type = DEVICE_UNKNOWN;
-    if (select_connected_device_in_coop(ctx, coop_idx, id, sizeof(id), &type) != 0) {
-        return;
+    if (select_connected_device_in_coop(ctx, coop_idx, out_id, out_id_len, &type) != 0) {
+        return NULL;
     }
-    const struct ClientDevice *d = require_connected(ctx, id);
+    return require_connected(ctx, out_id);
+}
+
+/* Menu xem thong tin: chi cho phep thiet bi da ket noi trong chuong */
+/** @brief Menu: INFO thiết bị đã CONNECT. */
+static void menu_info(struct UiContext *ctx) {
+    char id[MAX_ID_LEN];
+    const struct ClientDevice *d = select_connected_device(ctx, id, sizeof(id));
     if (!d) {
         return;
     }
@@ -432,17 +400,8 @@ static void menu_info(struct UiContext *ctx) {
 /* Dieu khien thiet bi: ON/OFF hoac hanh dong truc tiep (feeder/drinker/sprayer) */
 /** @brief Menu: CONTROL thiết bị đã CONNECT (ON/OFF hoặc hành động trực tiếp). */
 static void menu_control(struct UiContext *ctx, int direct_mode) {
-    refresh_coops(ctx);
-    size_t coop_idx = 0;
-    if (select_coop_index(&ctx->coop_list, &coop_idx) != 0) {
-        return;
-    }
     char id[MAX_ID_LEN];
-    enum DeviceType type = DEVICE_UNKNOWN;
-    if (select_connected_device_in_coop(ctx, coop_idx, id, sizeof(id), &type) != 0) {
-        return;
-    }
-    const struct ClientDevice *d = require_connected(ctx, id);
+    const struct ClientDevice *d = select_connected_device(ctx, id, sizeof(id));
     if (!d) {
         return;
     }
@@ -488,17 +447,8 @@ static void menu_control(struct UiContext *ctx, int direct_mode) {
 /* Thiet lap tham so theo tung loai thiet bi */
 /** @brief Menu: SETCFG thiết bị đã CONNECT (tuỳ theo type). */
 static void menu_setcfg(struct UiContext *ctx) {
-    refresh_coops(ctx);
-    size_t coop_idx = 0;
-    if (select_coop_index(&ctx->coop_list, &coop_idx) != 0) {
-        return;
-    }
     char id[MAX_ID_LEN];
-    enum DeviceType type = DEVICE_UNKNOWN;
-    if (select_connected_device_in_coop(ctx, coop_idx, id, sizeof(id), &type) != 0) {
-        return;
-    }
-    const struct ClientDevice *d = require_connected(ctx, id);
+    const struct ClientDevice *d = select_connected_device(ctx, id, sizeof(id));
     if (!d) {
         return;
     }
@@ -642,7 +592,6 @@ static void menu_manage_coop(struct UiContext *ctx) {
     }
 }
 
-/** @see ui_context_init() */
 void ui_context_init(struct UiContext *ctx, const struct UiBackendOps *ops) {
     if (!ctx || !ops) {
         return;
@@ -653,7 +602,6 @@ void ui_context_init(struct UiContext *ctx, const struct UiBackendOps *ops) {
 }
 
 /* Vong lap menu chinh */
-/** @see ui_run() */
 void ui_run(struct UiContext *ctx) {
     if (!ctx) {
         return;

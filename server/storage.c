@@ -24,6 +24,53 @@ static size_t clamp_schedule_count(size_t count) {
     return (count > MAX_SCHEDULE_ENTRIES) ? MAX_SCHEDULE_ENTRIES : count;
 }
 
+static void parse_schedule(json_t *schedule,
+                           struct ScheduleEntry *out,
+                           size_t *out_count,
+                           int include_food) {
+    if (!out || !out_count) return;
+    size_t n = (json_is_array(schedule)) ? clamp_schedule_count(json_array_size(schedule)) : 0;
+    *out_count = n;
+    for (size_t i = 0; i < n; ++i) {
+        json_t *e = json_array_get(schedule, i);
+        if (!json_is_object(e)) continue;
+
+        json_t *time = json_object_get(e, "time");
+        if (json_is_string(time)) {
+            copy_string(out[i].time, sizeof(out[i].time), json_string_value(time));
+        }
+
+        if (include_food) {
+            json_t *food = json_object_get(e, "food");
+            if (json_is_number(food)) out[i].food = json_number_value(food);
+        } else {
+            out[i].food = 0.0;
+        }
+
+        json_t *water = json_object_get(e, "water");
+        if (json_is_number(water)) out[i].water = json_number_value(water);
+    }
+}
+
+static json_t *build_schedule(const struct ScheduleEntry *schedule, size_t schedule_count, int include_food) {
+    json_t *arr = json_array();
+    if (!arr) return NULL;
+
+    size_t n = clamp_schedule_count(schedule_count);
+    for (size_t i = 0; i < n; ++i) {
+        const struct ScheduleEntry *s = &schedule[i];
+        json_t *e = json_object();
+        if (!e) continue;
+        (void)json_object_set_new(e, "time", json_string(s->time));
+        if (include_food) {
+            (void)json_object_set_new(e, "food", json_real(s->food));
+        }
+        (void)json_object_set_new(e, "water", json_real(s->water));
+        (void)json_array_append_new(arr, e);
+    }
+    return arr;
+}
+
 static int parse_device_info_object(struct Device *dev, json_t *info) {
     if (!dev || !json_is_object(info)) return -1;
 
@@ -118,52 +165,31 @@ static int parse_device_info_object(struct Device *dev, json_t *info) {
         if (json_is_string(uf)) copy_string(dev->data.feeder.unit_food, sizeof(dev->data.feeder.unit_food), json_string_value(uf));
         if (json_is_string(uw)) copy_string(dev->data.feeder.unit_water, sizeof(dev->data.feeder.unit_water), json_string_value(uw));
 
-        json_t *state = json_object_get(info, "state");
-        dev->data.feeder.state = parse_state_or_default(json_is_string(state) ? json_string_value(state) : NULL, DEVICE_OFF);
+	        json_t *state = json_object_get(info, "state");
+	        dev->data.feeder.state = parse_state_or_default(json_is_string(state) ? json_string_value(state) : NULL, DEVICE_OFF);
 
-        json_t *schedule = json_object_get(info, "schedule");
-        size_t n = (json_is_array(schedule)) ? clamp_schedule_count(json_array_size(schedule)) : 0;
-        dev->data.feeder.schedule_count = n;
-        for (size_t i = 0; i < n; ++i) {
-            json_t *e = json_array_get(schedule, i);
-            if (!json_is_object(e)) continue;
-
-            json_t *time = json_object_get(e, "time");
-            if (json_is_string(time)) copy_string(dev->data.feeder.schedule[i].time, sizeof(dev->data.feeder.schedule[i].time), json_string_value(time));
-
-            json_t *food = json_object_get(e, "food");
-            json_t *water = json_object_get(e, "water");
-            if (json_is_number(food)) dev->data.feeder.schedule[i].food = json_number_value(food);
-            if (json_is_number(water)) dev->data.feeder.schedule[i].water = json_number_value(water);
-        }
-        break;
-    }
-    case DEVICE_DRINKER: {
+	        parse_schedule(json_object_get(info, "schedule"),
+	                       dev->data.feeder.schedule,
+	                       &dev->data.feeder.schedule_count,
+	                       1);
+	        break;
+	    }
+	    case DEVICE_DRINKER: {
         json_t *vw = json_object_get(info, "nuoc_l");
         if (json_is_number(vw)) dev->data.drinker.Vw = json_number_value(vw);
 
         json_t *uw = json_object_get(info, "unit_water");
         if (json_is_string(uw)) copy_string(dev->data.drinker.unit_water, sizeof(dev->data.drinker.unit_water), json_string_value(uw));
 
-        json_t *state = json_object_get(info, "state");
-        dev->data.drinker.state = parse_state_or_default(json_is_string(state) ? json_string_value(state) : NULL, DEVICE_OFF);
+	        json_t *state = json_object_get(info, "state");
+	        dev->data.drinker.state = parse_state_or_default(json_is_string(state) ? json_string_value(state) : NULL, DEVICE_OFF);
 
-        json_t *schedule = json_object_get(info, "schedule");
-        size_t n = (json_is_array(schedule)) ? clamp_schedule_count(json_array_size(schedule)) : 0;
-        dev->data.drinker.schedule_count = n;
-        for (size_t i = 0; i < n; ++i) {
-            json_t *e = json_array_get(schedule, i);
-            if (!json_is_object(e)) continue;
-
-            json_t *time = json_object_get(e, "time");
-            if (json_is_string(time)) copy_string(dev->data.drinker.schedule[i].time, sizeof(dev->data.drinker.schedule[i].time), json_string_value(time));
-
-            json_t *water = json_object_get(e, "water");
-            if (json_is_number(water)) dev->data.drinker.schedule[i].water = json_number_value(water);
-            dev->data.drinker.schedule[i].food = 0.0;
-        }
-        break;
-    }
+	        parse_schedule(json_object_get(info, "schedule"),
+	                       dev->data.drinker.schedule,
+	                       &dev->data.drinker.schedule_count,
+	                       0);
+	        break;
+	    }
     default:
         break;
     }
@@ -214,43 +240,34 @@ static json_t *build_device_info_value(const struct Device *dev) {
         (void)json_object_set_new(info, "unit_humidity", json_string(dev->data.sprayer.unit_humidity));
         (void)json_object_set_new(info, "unit_flow", json_string(dev->data.sprayer.unit_flow));
         break;
-    case DEVICE_FEEDER: {
+	    case DEVICE_FEEDER: {
         (void)json_object_set_new(info, "state", json_string(dev->data.feeder.state == DEVICE_ON ? "ON" : "OFF"));
         (void)json_object_set_new(info, "thuc_an_kg", json_real(dev->data.feeder.W));
         (void)json_object_set_new(info, "nuoc_l", json_real(dev->data.feeder.Vw));
         (void)json_object_set_new(info, "unit_food", json_string(dev->data.feeder.unit_food));
         (void)json_object_set_new(info, "unit_water", json_string(dev->data.feeder.unit_water));
 
-        json_t *sched = json_array();
-        size_t n = clamp_schedule_count(dev->data.feeder.schedule_count);
-        for (size_t i = 0; i < n; ++i) {
-            const struct ScheduleEntry *s = &dev->data.feeder.schedule[i];
-            json_t *e = json_object();
-            (void)json_object_set_new(e, "time", json_string(s->time));
-            (void)json_object_set_new(e, "food", json_real(s->food));
-            (void)json_object_set_new(e, "water", json_real(s->water));
-            (void)json_array_append_new(sched, e);
-        }
-        (void)json_object_set_new(info, "schedule", sched);
-        break;
-    }
-    case DEVICE_DRINKER: {
+	        json_t *sched = build_schedule(dev->data.feeder.schedule, dev->data.feeder.schedule_count, 1);
+	        if (!sched) {
+	            json_decref(info);
+	            return NULL;
+	        }
+	        (void)json_object_set_new(info, "schedule", sched);
+	        break;
+	    }
+	    case DEVICE_DRINKER: {
         (void)json_object_set_new(info, "state", json_string(dev->data.drinker.state == DEVICE_ON ? "ON" : "OFF"));
         (void)json_object_set_new(info, "nuoc_l", json_real(dev->data.drinker.Vw));
         (void)json_object_set_new(info, "unit_water", json_string(dev->data.drinker.unit_water));
 
-        json_t *sched = json_array();
-        size_t n = clamp_schedule_count(dev->data.drinker.schedule_count);
-        for (size_t i = 0; i < n; ++i) {
-            const struct ScheduleEntry *s = &dev->data.drinker.schedule[i];
-            json_t *e = json_object();
-            (void)json_object_set_new(e, "time", json_string(s->time));
-            (void)json_object_set_new(e, "water", json_real(s->water));
-            (void)json_array_append_new(sched, e);
-        }
-        (void)json_object_set_new(info, "schedule", sched);
-        break;
-    }
+	        json_t *sched = build_schedule(dev->data.drinker.schedule, dev->data.drinker.schedule_count, 0);
+	        if (!sched) {
+	            json_decref(info);
+	            return NULL;
+	        }
+	        (void)json_object_set_new(info, "schedule", sched);
+	        break;
+	    }
     default:
         break;
     }

@@ -1,5 +1,6 @@
 #include "devices.h"
 
+#include <jansson.h>
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -281,6 +282,38 @@ static size_t clamp_schedule_count(size_t count) {
     return count > MAX_SCHEDULE_ENTRIES ? MAX_SCHEDULE_ENTRIES : count;
 }
 
+static const char *power_state_string(enum DevicePowerState state) {
+    return state == DEVICE_ON ? "ON" : "OFF";
+}
+
+static json_t *build_schedule_array(const struct ScheduleEntry *schedule, size_t schedule_count, int include_food) {
+    json_t *arr = json_array();
+    if (!arr) {
+        return NULL;
+    }
+
+    size_t count = clamp_schedule_count(schedule_count);
+    for (size_t i = 0; i < count; ++i) {
+        const struct ScheduleEntry *s = &schedule[i];
+        json_t *entry = json_object();
+        if (!entry) {
+            json_decref(arr);
+            return NULL;
+        }
+
+        if (json_object_set_new(entry, "time", json_string(s->time)) != 0 ||
+            (include_food && json_object_set_new(entry, "food", json_real(s->food)) != 0) ||
+            json_object_set_new(entry, "water", json_real(s->water)) != 0 ||
+            json_array_append_new(arr, entry) != 0) {
+            json_decref(entry);
+            json_decref(arr);
+            return NULL;
+        }
+    }
+
+    return arr;
+}
+
 int devices_set_config_feeder(struct Device *dev, double W, double Vw, const struct ScheduleEntry *schedule, size_t schedule_count) {
     if (!dev || dev->identity.type != DEVICE_FEEDER) {
         return -1;
@@ -320,124 +353,119 @@ int devices_info_json(const struct Device *dev, char *out_json, size_t out_len) 
         return -1;
     }
 
-    int written = 0;
+    out_json[0] = '\0';
+
+    int rc = -1;
+    char *dumped = NULL;
+    json_t *root = json_object();
+    if (!root) {
+        return -1;
+    }
+
+    if (json_object_set_new(root, "device_id", json_string(dev->identity.id)) != 0) {
+        goto out;
+    }
+
     switch (dev->identity.type) {
     case DEVICE_SENSOR:
-        written = snprintf(out_json, out_len,
-            "{\"device_id\":\"%s\",\"type\":\"sensor\",\"temperature\":%.1f,\"humidity\":%.1f,"
-            "\"unit_temperature\":\"%s\",\"unit_humidity\":\"%s\"}",
-            dev->identity.id,
-            dev->data.sensor.temperature,
-            dev->data.sensor.humidity,
-            dev->data.sensor.unit_temperature,
-            dev->data.sensor.unit_humidity);
+        if (json_object_set_new(root, "type", json_string("sensor")) != 0 ||
+            json_object_set_new(root, "temperature", json_real(dev->data.sensor.temperature)) != 0 ||
+            json_object_set_new(root, "humidity", json_real(dev->data.sensor.humidity)) != 0 ||
+            json_object_set_new(root, "unit_temperature", json_string(dev->data.sensor.unit_temperature)) != 0 ||
+            json_object_set_new(root, "unit_humidity", json_string(dev->data.sensor.unit_humidity)) != 0) {
+            goto out;
+        }
         break;
     case DEVICE_EGG_COUNTER:
-        written = snprintf(out_json, out_len,
-            "{\"device_id\":\"%s\",\"type\":\"egg_counter\",\"egg_count\":%d}",
-            dev->identity.id,
-            dev->data.egg_counter.egg_count);
+        if (json_object_set_new(root, "type", json_string("egg_counter")) != 0 ||
+            json_object_set_new(root, "egg_count", json_integer(dev->data.egg_counter.egg_count)) != 0) {
+            goto out;
+        }
         break;
     case DEVICE_FAN:
-        written = snprintf(out_json, out_len,
-            "{\"device_id\":\"%s\",\"type\":\"fan\",\"state\":\"%s\",\"nhiet_do_bat_c\":%.1f,\"nhiet_do_tat_c\":%.1f,"
-            "\"unit_temp\":\"%s\"}",
-            dev->identity.id,
-            dev->data.fan.state == DEVICE_ON ? "ON" : "OFF",
-            dev->data.fan.Tmax,
-            dev->data.fan.Tp1,
-            dev->data.fan.unit_temp);
+        if (json_object_set_new(root, "type", json_string("fan")) != 0 ||
+            json_object_set_new(root, "state", json_string(power_state_string(dev->data.fan.state))) != 0 ||
+            json_object_set_new(root, "nhiet_do_bat_c", json_real(dev->data.fan.Tmax)) != 0 ||
+            json_object_set_new(root, "nhiet_do_tat_c", json_real(dev->data.fan.Tp1)) != 0 ||
+            json_object_set_new(root, "unit_temp", json_string(dev->data.fan.unit_temp)) != 0) {
+            goto out;
+        }
         break;
     case DEVICE_HEATER:
-        written = snprintf(out_json, out_len,
-            "{\"device_id\":\"%s\",\"type\":\"heater\",\"state\":\"%s\",\"nhiet_do_bat_c\":%.1f,\"nhiet_do_tat_c\":%.1f,"
-            "\"mode\":\"%s\",\"unit_temp\":\"%s\"}",
-            dev->identity.id,
-            dev->data.heater.state == DEVICE_ON ? "ON" : "OFF",
-            dev->data.heater.Tmin,
-            dev->data.heater.Tp2,
-            dev->data.heater.mode,
-            dev->data.heater.unit_temp);
+        if (json_object_set_new(root, "type", json_string("heater")) != 0 ||
+            json_object_set_new(root, "state", json_string(power_state_string(dev->data.heater.state))) != 0 ||
+            json_object_set_new(root, "nhiet_do_bat_c", json_real(dev->data.heater.Tmin)) != 0 ||
+            json_object_set_new(root, "nhiet_do_tat_c", json_real(dev->data.heater.Tp2)) != 0 ||
+            json_object_set_new(root, "mode", json_string(dev->data.heater.mode)) != 0 ||
+            json_object_set_new(root, "unit_temp", json_string(dev->data.heater.unit_temp)) != 0) {
+            goto out;
+        }
         break;
     case DEVICE_SPRAYER:
-        written = snprintf(out_json, out_len,
-            "{\"device_id\":\"%s\",\"type\":\"sprayer\",\"state\":\"%s\",\"do_am_bat_pct\":%.1f,\"do_am_muc_tieu_pct\":%.1f,"
-            "\"luu_luong_lph\":%.1f,\"unit_humidity\":\"%s\",\"unit_flow\":\"%s\"}",
-            dev->identity.id,
-            dev->data.sprayer.state == DEVICE_ON ? "ON" : "OFF",
-            dev->data.sprayer.Hmin,
-            dev->data.sprayer.Hp,
-            dev->data.sprayer.Vh,
-            dev->data.sprayer.unit_humidity,
-            dev->data.sprayer.unit_flow);
+        if (json_object_set_new(root, "type", json_string("sprayer")) != 0 ||
+            json_object_set_new(root, "state", json_string(power_state_string(dev->data.sprayer.state))) != 0 ||
+            json_object_set_new(root, "do_am_bat_pct", json_real(dev->data.sprayer.Hmin)) != 0 ||
+            json_object_set_new(root, "do_am_muc_tieu_pct", json_real(dev->data.sprayer.Hp)) != 0 ||
+            json_object_set_new(root, "luu_luong_lph", json_real(dev->data.sprayer.Vh)) != 0 ||
+            json_object_set_new(root, "unit_humidity", json_string(dev->data.sprayer.unit_humidity)) != 0 ||
+            json_object_set_new(root, "unit_flow", json_string(dev->data.sprayer.unit_flow)) != 0) {
+            goto out;
+        }
         break;
     case DEVICE_FEEDER: {
-        /* build schedule array manually */
-        char schedule_buf[MAX_JSON_LEN];
-        size_t pos = 0;
-        pos += snprintf(schedule_buf + pos, sizeof(schedule_buf) - pos, "[");
-        for (size_t i = 0; i < dev->data.feeder.schedule_count; ++i) {
-            const struct ScheduleEntry *s = &dev->data.feeder.schedule[i];
-            pos += snprintf(schedule_buf + pos, sizeof(schedule_buf) - pos,
-                "%s{\"time\":\"%s\",\"food\":%.1f,\"water\":%.1f}",
-                (i == 0 ? "" : ","),
-                s->time,
-                s->food,
-                s->water);
-            if (pos >= sizeof(schedule_buf)) {
-                break;
-            }
+        json_t *schedule = build_schedule_array(dev->data.feeder.schedule, dev->data.feeder.schedule_count, 1);
+        if (!schedule) {
+            goto out;
         }
-        snprintf(schedule_buf + pos, sizeof(schedule_buf) - pos, "]");
-        written = snprintf(out_json, out_len,
-            "{\"device_id\":\"%s\",\"type\":\"feeder\",\"state\":\"%s\",\"thuc_an_kg\":%.1f,\"nuoc_l\":%.1f,"
-            "\"unit_food\":\"%s\",\"unit_water\":\"%s\",\"schedule\":%s}",
-            dev->identity.id,
-            dev->data.feeder.state == DEVICE_ON ? "ON" : "OFF",
-            dev->data.feeder.W,
-            dev->data.feeder.Vw,
-            dev->data.feeder.unit_food,
-            dev->data.feeder.unit_water,
-            schedule_buf);
+        if (json_object_set_new(root, "type", json_string("feeder")) != 0 ||
+            json_object_set_new(root, "state", json_string(power_state_string(dev->data.feeder.state))) != 0 ||
+            json_object_set_new(root, "thuc_an_kg", json_real(dev->data.feeder.W)) != 0 ||
+            json_object_set_new(root, "nuoc_l", json_real(dev->data.feeder.Vw)) != 0 ||
+            json_object_set_new(root, "unit_food", json_string(dev->data.feeder.unit_food)) != 0 ||
+            json_object_set_new(root, "unit_water", json_string(dev->data.feeder.unit_water)) != 0 ||
+            json_object_set_new(root, "schedule", schedule) != 0) {
+            json_decref(schedule);
+            goto out;
+        }
         break;
     }
     case DEVICE_DRINKER: {
-        char schedule_buf[MAX_JSON_LEN];
-        size_t pos = 0;
-        pos += snprintf(schedule_buf + pos, sizeof(schedule_buf) - pos, "[");
-        for (size_t i = 0; i < dev->data.drinker.schedule_count; ++i) {
-            const struct ScheduleEntry *s = &dev->data.drinker.schedule[i];
-            pos += snprintf(schedule_buf + pos, sizeof(schedule_buf) - pos,
-                "%s{\"time\":\"%s\",\"water\":%.1f}",
-                (i == 0 ? "" : ","),
-                s->time,
-                s->water);
-            if (pos >= sizeof(schedule_buf)) {
-                break;
-            }
+        json_t *schedule = build_schedule_array(dev->data.drinker.schedule, dev->data.drinker.schedule_count, 0);
+        if (!schedule) {
+            goto out;
         }
-        snprintf(schedule_buf + pos, sizeof(schedule_buf) - pos, "]");
-        written = snprintf(out_json, out_len,
-            "{\"device_id\":\"%s\",\"type\":\"drinker\",\"state\":\"%s\",\"nuoc_l\":%.1f,"
-            "\"unit_water\":\"%s\",\"schedule\":%s}",
-            dev->identity.id,
-            dev->data.drinker.state == DEVICE_ON ? "ON" : "OFF",
-            dev->data.drinker.Vw,
-            dev->data.drinker.unit_water,
-            schedule_buf);
+        if (json_object_set_new(root, "type", json_string("drinker")) != 0 ||
+            json_object_set_new(root, "state", json_string(power_state_string(dev->data.drinker.state))) != 0 ||
+            json_object_set_new(root, "nuoc_l", json_real(dev->data.drinker.Vw)) != 0 ||
+            json_object_set_new(root, "unit_water", json_string(dev->data.drinker.unit_water)) != 0 ||
+            json_object_set_new(root, "schedule", schedule) != 0) {
+            json_decref(schedule);
+            goto out;
+        }
         break;
     }
     default:
-        written = snprintf(out_json, out_len,
-            "{\"device_id\":\"%s\",\"type\":\"unknown\"}",
-            dev->identity.id);
+        if (json_object_set_new(root, "type", json_string("unknown")) != 0) {
+            goto out;
+        }
         break;
     }
 
-    if (written < 0 || (size_t)written >= out_len) {
-        return -1;
+    dumped = json_dumps(root, JSON_COMPACT | JSON_REAL_PRECISION(4));
+    if (!dumped) {
+        goto out;
     }
-    return 0;
+    size_t dumped_len = strlen(dumped);
+    if (dumped_len + 1 > out_len) {
+        goto out;
+    }
+    memcpy(out_json, dumped, dumped_len + 1);
+    rc = 0;
+
+out:
+    free(dumped);
+    json_decref(root);
+    return rc;
 }
 
 void devices_init_default_device(struct Device *dev, enum DeviceType type, const char *id, const char *password) {
